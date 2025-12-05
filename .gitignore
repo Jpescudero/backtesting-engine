@@ -1,0 +1,28 @@
+# NO subir datos
+data/raw/
+data/parquet/
+data/npz/
+data/other/
+data/**/*.csv
+data/**/*.parquet
+data/**/*.npz
+data/**/*.log
+data/**/*.log.gz
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+
+# Entornos virtuales
+.env/
+.venv/
+
+# VSCode
+.vscode/
+
+# Notebooks
+.ipynb_checkpoints/
+
+# Reportes
+reports/
