@@ -344,3 +344,265 @@ def run_backtest_basic(
         trade_log=trade_log,
         extra=extra,
     )
+# =====================
+# Motor de backtest usando SEÑALES externas (Numba)
+# =====================
+
+@njit
+def _backtest_with_risk_from_signals(
+    ts: np.ndarray,
+    o: np.ndarray,
+    h: np.ndarray,
+    l: np.ndarray,
+    c: np.ndarray,
+    v: np.ndarray,
+    signals: np.ndarray,
+    initial_cash: float,
+    commission_per_trade: float,
+    trade_size: float,
+    slippage: float,
+    sl_pct: float,
+    tp_pct: float,
+    max_bars_in_trade: int,
+) -> Tuple[
+    np.ndarray,  # equity
+    float,       # cash final
+    float,       # posición final
+    int,         # número de trades
+    np.ndarray,  # trade_entry_idx
+    np.ndarray,  # trade_exit_idx
+    np.ndarray,  # trade_entry_price
+    np.ndarray,  # trade_exit_price
+    np.ndarray,  # trade_qty
+    np.ndarray,  # trade_pnl
+    np.ndarray,  # trade_holding_bars
+    np.ndarray,  # trade_exit_reason
+]:
+    """
+    Igual que _backtest_with_risk, pero usando un array de señales externo.
+
+    Parámetros clave:
+      - signals: array int8 del mismo tamaño que c:
+          +1 -> señal de compra/entrada larga
+          -1 -> cierre por señal contraria
+           0 -> nada
+
+    exit_reason:
+      1 -> Stop Loss
+      2 -> Take Profit
+      3 -> Time Stop (duración máxima)
+      4 -> Señal contraria
+    """
+    n = c.shape[0]
+    equity = np.empty(n, dtype=np.float64)
+
+    cash = initial_cash
+    position = 0.0
+    entry_price = 0.0
+    entry_bar_idx = -1
+
+    # Prealocación para el log de trades
+    max_trades = n // 2 + 1
+
+    trade_entry_idx = np.empty(max_trades, dtype=np.int64)
+    trade_exit_idx = np.empty(max_trades, dtype=np.int64)
+    trade_entry_price = np.empty(max_trades, dtype=np.float64)
+    trade_exit_price = np.empty(max_trades, dtype=np.float64)
+    trade_qty = np.empty(max_trades, dtype=np.float64)
+    trade_pnl = np.empty(max_trades, dtype=np.float64)
+    trade_holding_bars = np.empty(max_trades, dtype=np.int64)
+    trade_exit_reason = np.empty(max_trades, dtype=np.int8)
+
+    trade_count = 0
+
+    for i in range(n):
+        price = c[i]
+
+        # --- Defensa: si el precio no es finito, saltamos la barra ---
+        if not np.isfinite(price):
+            if i == 0:
+                equity[i] = initial_cash
+            else:
+                equity[i] = equity[i - 1]
+            continue
+        # -------------------------------------------------------------
+
+        # 1) Comprobar SL / TP / max_bars antes de nuevas señales
+        if position > 0.0:
+            ret_from_entry = (price - entry_price) / entry_price
+            bars_in_trade = i - entry_bar_idx
+
+            reason = 0
+
+            if ret_from_entry <= -sl_pct:
+                reason = 1  # SL
+            elif ret_from_entry >= tp_pct:
+                reason = 2  # TP
+            elif bars_in_trade >= max_bars_in_trade:
+                reason = 3  # Time stop
+
+            if reason != 0:
+                # Cerrar posición
+                trade_price = price - slippage
+                cash += trade_price * position
+                cash -= commission_per_trade
+
+                realized_pnl = (trade_price - entry_price) * position - commission_per_trade * 1.0
+                hold_bars = bars_in_trade
+
+                if trade_count < max_trades:
+                    trade_entry_idx[trade_count] = entry_bar_idx
+                    trade_exit_idx[trade_count] = i
+                    trade_entry_price[trade_count] = entry_price
+                    trade_exit_price[trade_count] = trade_price
+                    trade_qty[trade_count] = position
+                    trade_pnl[trade_count] = realized_pnl
+                    trade_holding_bars[trade_count] = hold_bars
+                    trade_exit_reason[trade_count] = reason
+                    trade_count += 1
+
+                position = 0.0
+                entry_price = 0.0
+                entry_bar_idx = -1
+
+        # 2) Procesar señal de la estrategia (compra/venta)
+        sig = signals[i]
+
+        # Señal de venta: cerrar por señal contraria
+        if sig == -1 and position > 0.0:
+            trade_price = price - slippage
+            cash += trade_price * position
+            cash -= commission_per_trade
+
+            realized_pnl = (trade_price - entry_price) * position - commission_per_trade * 1.0
+            hold_bars = i - entry_bar_idx
+
+            if trade_count < max_trades:
+                trade_entry_idx[trade_count] = entry_bar_idx
+                trade_exit_idx[trade_count] = i
+                trade_entry_price[trade_count] = entry_price
+                trade_exit_price[trade_count] = trade_price
+                trade_qty[trade_count] = position
+                trade_pnl[trade_count] = realized_pnl
+                trade_holding_bars[trade_count] = hold_bars
+                trade_exit_reason[trade_count] = 4  # señal contraria
+                trade_count += 1
+
+            position = 0.0
+            entry_price = 0.0
+            entry_bar_idx = -1
+
+        # Señal de compra: abrir posición si estamos flat
+        if sig == 1 and position == 0.0:
+            trade_price = price + slippage
+            position = trade_size
+            cash -= trade_price * position
+            cash -= commission_per_trade
+            entry_price = trade_price
+            entry_bar_idx = i
+
+        # 3) Mark-to-market de la equity
+        equity[i] = cash + position * price
+
+    return (
+        equity,
+        cash,
+        position,
+        trade_count,
+        trade_entry_idx,
+        trade_exit_idx,
+        trade_entry_price,
+        trade_exit_price,
+        trade_qty,
+        trade_pnl,
+        trade_holding_bars,
+        trade_exit_reason,
+    )
+
+
+# =====================
+# Interfaz de alto nivel usando señales externas
+# =====================
+
+def run_backtest_with_signals(
+    data: OHLCVArrays,
+    signals: np.ndarray,
+    config: BacktestConfig | None = None,
+) -> BacktestResult:
+    """
+    Ejecuta un backtest usando un array de señales externo (int8: -1, 0, +1).
+
+    Es igual que run_backtest_basic, pero:
+      - No calcula la estrategia dentro del motor.
+      - Usa las señales proporcionadas.
+    """
+    if config is None:
+        config = BacktestConfig()
+
+    if signals.shape[0] != data.c.shape[0]:
+        raise ValueError(
+            f"El tamaño de signals ({signals.shape[0]}) no coincide con el número de barras ({data.c.shape[0]})."
+        )
+
+    (
+        equity,
+        cash,
+        position,
+        trade_count,
+        trade_entry_idx,
+        trade_exit_idx,
+        trade_entry_price,
+        trade_exit_price,
+        trade_qty,
+        trade_pnl,
+        trade_holding_bars,
+        trade_exit_reason,
+    ) = _backtest_with_risk_from_signals(
+        ts=data.ts,
+        o=data.o,
+        h=data.h,
+        l=data.l,
+        c=data.c,
+        v=data.v,
+        signals=signals.astype(np.int8),
+        initial_cash=config.initial_cash,
+        commission_per_trade=config.commission_per_trade,
+        trade_size=config.trade_size,
+        slippage=config.slippage,
+        sl_pct=config.sl_pct,
+        tp_pct=config.tp_pct,
+        max_bars_in_trade=config.max_bars_in_trade,
+    )
+
+    trade_log: Dict[str, np.ndarray] = {}
+    if trade_count > 0:
+        trade_log = {
+            "entry_idx": trade_entry_idx[:trade_count],
+            "exit_idx": trade_exit_idx[:trade_count],
+            "entry_price": trade_entry_price[:trade_count],
+            "exit_price": trade_exit_price[:trade_count],
+            "qty": trade_qty[:trade_count],
+            "pnl": trade_pnl[:trade_count],
+            "holding_bars": trade_holding_bars[:trade_count],
+            "exit_reason": trade_exit_reason[:trade_count],
+        }
+
+    extra: Dict[str, Any] = {
+        "initial_cash": config.initial_cash,
+        "commission_per_trade": config.commission_per_trade,
+        "trade_size": config.trade_size,
+        "slippage": config.slippage,
+        "sl_pct": config.sl_pct,
+        "tp_pct": config.tp_pct,
+        "max_bars_in_trade": config.max_bars_in_trade,
+        "entry_threshold": config.entry_threshold,
+        "n_trades": trade_count,
+    }
+
+    return BacktestResult(
+        equity=equity,
+        cash=cash,
+        position=position,
+        trade_log=trade_log,
+        extra=extra,
+    )
