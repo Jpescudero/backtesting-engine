@@ -17,6 +17,7 @@ def _get_main_dir() -> Path:
     main_file: Optional[str] = getattr(main_module, "__file__", None)
 
     if main_file is not None:
+        # Ej: C:/.../10. Backtesting/  si ejecutas `python main.py`
         return Path(main_file).resolve().parent
 
     # Fallback: si se ejecuta desde un intérprete interactivo, notebooks, etc.
@@ -25,26 +26,41 @@ def _get_main_dir() -> Path:
     return Path(__file__).resolve().parents[2]
 
 
-# --- Directorios base del proyecto ---
+# ================================
+# Directorios base del proyecto
+# ================================
 
-PROJECT_ROOT = _get_main_dir()          # carpeta donde vive main.py
-SRC_DIR      = PROJECT_ROOT / "src"
-DATA_DIR     = PROJECT_ROOT / "data"
-NOTEBOOKS_DIR = PROJECT_ROOT / "notebooks"
-REPORTS_DIR   = PROJECT_ROOT / "reports"
+PROJECT_ROOT   = _get_main_dir()          # carpeta donde vive main.py
+SRC_DIR        = PROJECT_ROOT / "src"
+DATA_DIR       = PROJECT_ROOT / "data"
+NOTEBOOKS_DIR  = PROJECT_ROOT / "notebooks"
+REPORTS_DIR    = PROJECT_ROOT / "reports"
 
-# --- Subcarpetas de datos ---
+# Subcarpetas de código dentro de src/
+CONFIG_DIR       = SRC_DIR / "config"
+DATA_MODULE_DIR  = SRC_DIR / "data"
+ENGINE_DIR       = SRC_DIR / "engine"
+STRATEGIES_DIR   = SRC_DIR / "strategies"
+VISUALIZATION_DIR = SRC_DIR / "visualization"
+ANALYTICS_DIR    = SRC_DIR / "analytics"
+
+
+# ================================
+# Subcarpetas de datos
+# ================================
 
 RAW_DATA_DIR       = DATA_DIR / "raw"
 DARWINEX_RAW_DIR   = RAW_DATA_DIR / "darwinex"
 
-PARQUET_DIR        = DATA_DIR / "parquet"
-PARQUET_TICKS_DIR  = PARQUET_DIR / "ticks"
+PARQUET_DIR         = DATA_DIR / "parquet"
+PARQUET_TICKS_DIR   = PARQUET_DIR / "ticks"
 PARQUET_BARS_1M_DIR = PARQUET_DIR / "bars_1m"
 
-NPZ_DIR            = DATA_DIR / "npz"
-NPZ_NDXM_DIR       = NPZ_DIR / "NDXm"
-OTHER_DATA_DIR     = DATA_DIR / "other"
+NPZ_DIR        = DATA_DIR / "npz"
+# Carpeta específica para NDXm (tu símbolo actual principal)
+NPZ_NDXM_DIR   = NPZ_DIR / "NDXm"
+
+OTHER_DATA_DIR = DATA_DIR / "other"
 
 
 def ensure_directories_exist() -> None:
