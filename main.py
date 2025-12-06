@@ -1,7 +1,6 @@
 # main.py
 """
-Punto de entrada para lanzar un backtest sencillo y generar
-outputs fáciles de analizar/compartir.
+Punto de entrada para lanzar un backtest sencillo y generar outputs fáciles de analizar/compartir.
 
 Incluye:
 - Estadísticas de equity y de trades.
@@ -9,8 +8,7 @@ Incluye:
 - (Opcional) Figura con las mejores y peores operaciones (3+3).
 - (Opcional) Gráficas equity + nº trades/mes.
 
-Además, mide y muestra tiempos de ejecución por fase para
-identificar cuellos de botella.
+Además, mide y muestra tiempos de ejecución por fase para identificar cuellos de botella.
 """
 
 from __future__ import annotations
@@ -37,7 +35,6 @@ from src.data.csv_1m_to_npz import csv_1m_to_npz
 from src.data.feeds import NPZOHLCVFeed
 
 from src.engine.core import BacktestConfig, run_backtest_with_signals
-
 from src.strategies.barrida_apertura import StrategyBarridaApertura
 
 from src.analytics.reporting import equity_to_series, trades_to_dataframe
@@ -64,12 +61,11 @@ GENERATE_TRADE_PLOTS = True     # 3 mejores + 3 peores trades
 # Helpers de preparación de datos
 # ============================================================
 
-
 def ensure_ticks_and_csv(symbol: str = DEFAULT_SYMBOL) -> Path:
     """
     Se asegura de que existan:
-      - Parquets de ticks para el símbolo.
-      - CSV de barras de 1 minuto para el símbolo.
+    - Parquets de ticks para el símbolo.
+    - CSV de barras de 1 minuto para el símbolo.
     """
     ensure_directories_exist()
 
@@ -79,20 +75,25 @@ def ensure_ticks_and_csv(symbol: str = DEFAULT_SYMBOL) -> Path:
         tick_files = []
 
     if not tick_files:
-        print(f"[ensure_ticks_and_csv] No hay parquet de ticks para {symbol}. Generando desde Darwinex...")
+        print(f"[ensure_ticks_and_csv] No hay parquet de ticks para {symbol}. "
+              f"Generando desde Darwinex...")
         data_to_parquet(symbol=symbol)
-
         tick_files = list_tick_files(PARQUET_TICKS_DIR, symbol=symbol)
         if not tick_files:
-            raise RuntimeError(f"No se han podido generar parquets de ticks para {symbol}")
+            raise RuntimeError(
+                f"No se han podido generar parquets de ticks para {symbol}"
+            )
 
     bars_csv = get_default_output_csv(symbol=symbol)
     if not bars_csv.exists():
-        print(f"[ensure_ticks_and_csv] No existe CSV de barras 1m para {symbol}. Generando...")
+        print(f"[ensure_ticks_and_csv] No existe CSV de barras 1m para {symbol}. "
+              f"Generando...")
         bars_csv = generate_1m_bars_csv(symbol=symbol)
 
     if not bars_csv.exists():
-        raise RuntimeError(f"No se ha podido generar el CSV de barras 1m para {symbol}")
+        raise RuntimeError(
+            f"No se ha podido generar el CSV de barras 1m para {symbol}"
+        )
 
     print(f"[ensure_ticks_and_csv] CSV de barras 1m listo: {bars_csv}")
     return bars_csv
@@ -111,12 +112,15 @@ def ensure_npz_from_csv(symbol: str = DEFAULT_SYMBOL, timeframe: str = "1m") -> 
     existing_npz = list(symbol_npz_dir.glob(pattern))
 
     if existing_npz:
-        print(f"[ensure_npz_from_csv] Encontrados {len(existing_npz)} NPZ para {symbol} ({timeframe}).")
+        print(
+            f"[ensure_npz_from_csv] Encontrados {len(existing_npz)} NPZ para "
+            f"{symbol} ({timeframe})."
+        )
         return existing_npz[0]
 
-    print(f"[ensure_npz_from_csv] No hay NPZ para {symbol} ({timeframe}). Creando desde CSV 1m...")
+    print(f"[ensure_npz_from_csv] No hay NPZ para {symbol} ({timeframe}). "
+          f"Creando desde CSV 1m...")
     bars_csv = ensure_ticks_and_csv(symbol=symbol)
-
     npz_path = csv_1m_to_npz(symbol=symbol, csv_path=bars_csv)
 
     return npz_path
@@ -126,17 +130,16 @@ def ensure_npz_from_csv(symbol: str = DEFAULT_SYMBOL, timeframe: str = "1m") -> 
 # Backtest + profiling de tiempos
 # ============================================================
 
-
 def run_single_backtest(symbol: str = "NDXm") -> None:
     """
     Ejecuta un único backtest sobre el símbolo indicado usando:
-      - Datos 1m (NPZ)
-      - Estrategia de barrida en aperturas
-      - Motor run_backtest_with_signals (Numba)
+    - Datos 1m (NPZ)
+    - Estrategia de barrida en aperturas (SOLO LARGOS)
+    - Motor run_backtest_with_signals (Numba)
 
     Además imprime tiempos por cada fase importante.
     """
-    timings = {}
+    timings: dict[str, float] = {}
 
     t0 = time.perf_counter()
 
@@ -173,6 +176,11 @@ def run_single_backtest(symbol: str = "NDXm") -> None:
 
     # 4) Backtest (motor numba)
     t_bt_start = time.perf_counter()
+
+    # IMPORTANTE:
+    # - initial_cash = 2000.0 (tu capital actual)
+    # - trade_size = 0.1 => equivalente a 0.1 "contratos" / 0.1 €/punto aprox.
+    #   Si quieres más agresivo: súbelo (0.2, 0.5, 1.0...)
     config = BacktestConfig(
         initial_cash=2000.0,
         sl_pct=0.01,
@@ -180,20 +188,19 @@ def run_single_backtest(symbol: str = "NDXm") -> None:
         max_bars_in_trade=60,
         commission_per_trade=1.0,
         slippage=0.0,
-        # AQUÍ DECIDES LO AGRESIVO/CONSERVADOR:
-        risk_per_trade_pct=0.01,  # 1% de equity por trade
-        point_value=1.0,          # ajusta si tu producto tiene otro valor por punto
-        trade_size=1.0,           # usado sólo si risk_per_trade_pct <= 0
+        trade_size=0.1,     # fracción de contrato para poder operar con 2000 €
+        entry_threshold=0.0  # no se usa en la barrida, pero el dataclass lo pide
     )
 
     result = run_backtest_with_signals(data, strat_res.signals, config=config)
+
     t_bt_end = time.perf_counter()
     timings["04_backtest_motor"] = t_bt_end - t_bt_start
 
     print("\n=== Resumen del backtest ===")
-    print("Cash final:       ", result.cash)
-    print("Posición final:   ", result.position)
-    print("Número de trades: ", result.extra.get("n_trades", 0))
+    print("Cash final:      ", result.cash)
+    print("Posición final:  ", result.position)
+    print("Número de trades:", result.extra.get("n_trades", 0))
 
     # 5) Conversión a pandas (equity/trades)
     t_pandas_start = time.perf_counter()
@@ -224,10 +231,12 @@ def run_single_backtest(symbol: str = "NDXm") -> None:
     print(trades_df.head())
 
     reports_dir = (REPORTS_DIR / symbol).resolve()
+    reports_dir.mkdir(parents=True, exist_ok=True)
 
-    # 7) Generación de Excel + JSON (opcional, ultraligero)
+    # 7) Generación de Excel + JSON (opcional)
     if GENERATE_REPORT_FILES:
         t_reports_start = time.perf_counter()
+
         excel_path, json_path = save_backtest_summary_to_excel(
             base_dir=reports_dir,
             filename=f"backtest_{symbol}_barrida_apertura.xlsx",
@@ -239,6 +248,7 @@ def run_single_backtest(symbol: str = "NDXm") -> None:
             trade_stats=tr_stats,
             meta=getattr(strat_res, "meta", {}),
         )
+
         t_reports_end = time.perf_counter()
         timings["07_reportes_excel_json"] = t_reports_end - t_reports_start
 
@@ -252,13 +262,13 @@ def run_single_backtest(symbol: str = "NDXm") -> None:
     # 8) Gráficas básicas (equity + nº de trades por mes)
     if GENERATE_MAIN_PLOTS:
         t_plots_start = time.perf_counter()
-        fig, (ax1, ax2) = plt.subplots(2, 1, sharex=False)
 
+        fig, (ax1, ax2) = plt.subplots(2, 1, sharex=False)
         plot_equity_curve(result, data, ax=ax1)
         plot_trades_per_month(result, data, ax=ax2)
-
         plt.tight_layout()
         plt.show()
+
         t_plots_end = time.perf_counter()
         timings["08_plots_equity_trades_mes"] = t_plots_end - t_plots_start
     else:
@@ -268,7 +278,9 @@ def run_single_backtest(symbol: str = "NDXm") -> None:
     # 9) Figura de mejores/peores trades (opcional)
     if GENERATE_TRADE_PLOTS:
         t_tradeplots_start = time.perf_counter()
+
         print("\n[run_single_backtest] Generando figura de mejores/peores trades...")
+
         fig_trades = plot_best_and_worst_trades(
             trades_df=trades_df,
             data=data,
@@ -283,6 +295,7 @@ def run_single_backtest(symbol: str = "NDXm") -> None:
             save_path=reports_dir / "best_worst_trades.png",
         )
         plt.show()
+
         t_tradeplots_end = time.perf_counter()
         timings["09_plots_mejores_peores_trades"] = t_tradeplots_end - t_tradeplots_start
 
@@ -310,3 +323,4 @@ def main(symbol: str = "NDXm") -> None:
 
 if __name__ == "__main__":
     main(symbol="NDXm")
+
