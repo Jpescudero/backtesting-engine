@@ -5,83 +5,98 @@ It is built around a full data pipeline (Darwinex BID/ASK → parquet → OHLCV 
 
 ---
 
-## 📁 Project Structure
+## 📁 1.Project Structure
 
-backtesting-engine/
-│
-├── main.py # Entry point orchestrating the entire pipeline
-├── src/
-│ ├── config/
-│ │ └── paths.py # Global project paths and directory management
-│ │
-│ ├── data/ # Data ingestion, cleaning, and transformation
-│ │ ├── data_utils.py
-│ │ ├── data_to_parquet.py
-│ │ ├── bars1m_to_excel.py
-│ │ ├── csv_1m_to_npz.py
-│ │ ├── parquet_to_npz.py
-│ │ ├── feeds.py
-│ │ └── organize_darwinex_files.py # (pending)
-│ │
-│ ├── engine/ # Numba-powered backtesting engine
-│ │ └── core.py
-│ │
-│ ├── analytics/ # Metrics, reporting, visualizations
-│ │ ├── metrics.py
-│ │ ├── reporting.py
-│ │ └── plots.py
-│ │
-│ ├── strategies/ # Strategy implementations
-│ │ # e.g., momentum_opening.py, sweep_reversal.py, etc.
-│ │
-│ └── visualization/ # Future dashboard components
-│
-├── data/ # All datasets and generated artifacts
-│ ├── raw/
-│ │ └── darwinex/ # Original BID/ASK compressed logs
-│ ├── parquet/
-│ │ ├── ticks/
-│ │ └── bars_1m/
-│ ├── npz/
-│ └── other/
-│
-├── notebooks/ # Exploratory research notebooks
-└── reports/ # Generated reports (PDF/HTML)
+### 1.1 Table View
 
+| Path                                 | Description |
+|-------------------------------------|-------------|
+| `main.py`                           | Entry point orchestrating full pipeline |
+| `src/config/paths.py`               | Global paths and directory management |
+| `src/data/data_utils.py`            | Helpers for file discovery & aggregation |
+| `src/data/data_to_parquet.py`       | Convert Darwinex BID/ASK logs → parquet |
+| `src/data/bars1m_to_excel.py`       | Build 1-minute OHLCV CSV files |
+| `src/data/csv_1m_to_npz.py`         | Convert OHLCV CSV → NPZ (Numba-ready) |
+| `src/data/parquet_to_npz.py`        | Convert parquet bars → NPZ arrays |
+| `src/data/feeds.py`                 | Data feed (NPZ loader for the engine) |
+| `src/data/organize_darwinex_files.py` | (Pending) Organize raw tick logs |
+| `src/engine/core.py`                | Numba-powered backtesting engine |
+| `src/analytics/metrics.py`          | Performance metrics |
+| `src/analytics/reporting.py`        | Convert results → pandas structures |
+| `src/analytics/plots.py`            | Equity/trade visualization tools |
+| `src/strategies/`                   | Strategy modules |
+| `src/visualization/`                | Future dashboards |
+| `data/raw/darwinex/`                | Raw tick logs (BID/ASK) |
+| `data/parquet/ticks/`               | Parquet files of cleaned ticks |
+| `data/parquet/bars_1m/`             | Parquet 1-minute bars |
+| `data/npz/`                         | Numba-ready NPZ files |
+| `data/other/`                       | Misc additional files |
+| `notebooks/`                        | Research notebooks |
+| `reports/`                          | HTML/PDF reports |
 
+### 1.2 Codeblock
+
+- **main.py** — Main entry point of the entire workflow  
+- **src/**
+  - **config/**
+    - `paths.py` — Defines all project directory paths
+  - **data/**
+    - `data_utils.py` — Helper utilities
+    - `data_to_parquet.py` — Convert Darwinex logs → parquet
+    - `bars1m_to_excel.py` — Build 1m OHLCV bars
+    - `csv_1m_to_npz.py` — Convert 1m bars → NPZ
+    - `parquet_to_npz.py` — Convert parquet bars → NPZ
+    - `feeds.py` — Data feed loader for NPZ files
+    - `organize_darwinex_files.py` — Pending
+  - **engine/**
+    - `core.py` — Backtesting engine (Numba)
+  - **analytics/**
+    - `metrics.py` — Performance metrics
+    - `reporting.py` — Reporting utilities
+    - `plots.py` — Visualization tools
+  - **strategies/** — Strategy implementations
+  - **visualization/** — Dashboard modules
+- **data/**
+  - `raw/darwinex/` — Original tick logs
+  - `parquet/ticks/` — Cleaned tick files
+  - `parquet/bars_1m/` — OHLCV bars
+  - `npz/` — Numba-ready arrays
+  - `other/`
+- **notebooks/** — Research & experiments
+- **reports/** — Generated reports
 
 ---
 
-## 🚀 Workflow Overview
+## 🚀 2. Workflow Overview
 
-### **1. Darwinex Tick Logs → Parquet**
+### **2.1. Darwinex Tick Logs → Parquet**
+
 The system processes raw BID/ASK logs into structured parquet files, organized by:
 parquet/ticks/<symbol>/<year>/<symbol>_YYYY-MM-DD_HH.parquet
 Handled by: `data_to_parquet.py`t
+
 ---
 
-### **2. Parquet → 1-Minute OHLCV Bars**
+### **2.2. Parquet → 1-Minute OHLCV Bars**
 All ticks are aggregated into a single unified CSV:
 barras_1min_<symbol>_all_years.csv
 Handled by: `bars1m_to_excel.py`
 
 ---
 
-### **3. 1-Minute Bars → NPZ Arrays (Numba-Ready)**
+### **2.3. 1-Minute Bars → NPZ Arrays (Numba-Ready)**
 Numerical arrays include:
 timestamps, open, high, low, close, volume
 Handled by: `csv_1m_to_npz.py`
 
 ---
 
-### **4. Data Feed Loader**
-Loads the NPZ arrays into structured objects:
+### **2.4. Data Feed Loader**
+Loads the NPZ arrays into structured objects
 
-```python
-from src.data.feeds import NPZOHLCVFeed
-data = NPZOHLCVFeed("NDXm", "1m").load_all()
+---
 
-### **5. Strategies**
+### **2.5. Strategies**
 
 All trading strategies reside inside:
 src/strategies/
@@ -113,8 +128,11 @@ strategy = StrategyBarridaApertura(
 )
 
 signals = strategy.generate_signals(data).signals
+```
 
-### **6. Backtesting Engine**
+---
+
+### **2.6. Backtesting Engine**
 
 The backtesting engine is implemented in:
 src/engine/core.py
@@ -147,6 +165,7 @@ config = BacktestConfig(
 )
 
 result = run_backtest_with_signals(data, signals, config)
+```
 
 Output includes:
 
@@ -155,20 +174,18 @@ Full bar-by-bar equity curve
 Trade logs (entries, exits, PnL, duration)
 Extra metadata (e.g., number of trades)
 
+---
 
-### **7. Metrics, Reporting & Visualization**
+### **2.7. Metrics, Reporting & Visualization**
 
 All analytical and visualization tools are located in: src/analytics/
 
 
 This module provides three main components:
 
----
-
-### **7.1 Performance Metrics**
+#### **2.7.1 Performance Metrics**
 
 File:src/analytics/metrics.py
-
 
 This module computes detailed performance statistics for both the equity curve and trade logs.
 
@@ -197,88 +214,21 @@ from src.analytics.metrics import equity_curve_metrics
 
 metrics = equity_curve_metrics(eq_series)
 print(metrics)
+```
 
-
-### **7.2 Reporting Utilities**
+#### **2.7.2 Reporting Utilities**
 
 The reporting utilities are located in:
 src/analytics/reporting.py
 
-
 This module provides functions to convert raw backtest results into clean, analysis-ready pandas structures.
 
-#### **Available Functions**
-
----
-
-#### **`equity_to_series(result, data)`**
-
-Converts the engine’s internal equity array into a pandas `Series`, indexed by timestamps.
-
-Outputs:
-
-- Equity curve over time  
-- Fully aligned with the OHLCV feed  
-- Suitable for plotting and metric computation  
-
-Example:
-
-```python
-from src.analytics.reporting import equity_to_series
-
-eq_series = equity_to_series(result, data)
-print(eq_series.tail())
-
-trades_to_dataframe(result, data)
-
-Creates a detailed trade log as a pandas DataFrame.
-
-Columns typically include:
-
-entry_time
-exit_time
-entry_price
-exit_price
-pnl_abs (absolute profit/loss)
-pnl_pct (percentage return)
-bars_in_trade
-direction (long/short)
-
-Example:
-
-from src.analytics.reporting import trades_to_dataframe
-
-trades_df = trades_to_dataframe(result, data)
-print(trades_df.head())
-
-### **7.3 Visualization Tools**
+#### **2.7.3 Visualization Tools**
 
 All visualization utilities are located in:
 src/analytics/plots.py
 
-These tools provide graphical analysis of strategy performance, including equity evolution, trade distribution, and behavioral patterns over time.
-
 ---
-
-#### **Available Plotting Functions**
-
----
-
-### **`plot_equity_curve(result, data, ax=None)`**
-
-Plots the full **equity curve** using timestamps from the loaded OHLCV feed.
-
-Features:
-
-- Smooth equity line  
-- Starting and ending capital visualization  
-- Optional axis injection for subplot integration  
-
-Example:
-
-```python
-from src.analytics.plots import plot_equity_curve
-plot_equity_curve(result, data)
 
 
 📄 License
