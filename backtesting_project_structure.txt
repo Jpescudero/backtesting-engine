@@ -9,7 +9,11 @@ Carpeta local típica:
 
 EJECUTABLE PRINCIPAL
 --------------------
-main.py                      # Punto de entrada: orquesta todo el pipeline
+main.py
+  # Punto de entrada: orquesta todo el pipeline, lanza el backtest
+  # de la estrategia de barrida y genera:
+  #   - Excel + JSON con resumen del backtest
+  #   - PNG con mejores/peores trades
   GitHub: https://github.com/Jpescudero/backtesting-engine/blob/main/main.py
 
 
@@ -20,7 +24,9 @@ src\
 
   config\
     # Configuración general del proyecto
-    paths.py                  # GPS de rutas (PROJECT_ROOT, DATA_DIR, etc.)
+
+    paths.py
+      # GPS de rutas (PROJECT_ROOT, DATA_DIR, REPORTS_DIR, etc.)
       GitHub: https://github.com/Jpescudero/backtesting-engine/blob/main/src/config/paths.py
 
   data\
@@ -28,25 +34,32 @@ src\
 
     __init__.py  (opcional)
 
-    data_utils.py             # helpers: iter_ticks_by_year, make_ohlcv, list_tick_files...
+    data_utils.py
+      # helpers: iter_ticks_by_year, make_ohlcv, list_tick_files...
       GitHub: https://github.com/Jpescudero/backtesting-engine/blob/main/src/data/data_utils.py
 
-    data_to_parquet.py        # Darwinex BID/ASK -> ticks en parquet (por símbolo/año/hora)
+    data_to_parquet.py
+      # Darwinex BID/ASK -> ticks en parquet (por símbolo/año/hora)
       GitHub: https://github.com/Jpescudero/backtesting-engine/blob/main/src/data/data_to_parquet.py
 
-    bars1m_to_excel.py        # ticks parquet -> barras 1m CSV (todos los años)
+    bars1m_to_excel.py
+      # ticks parquet -> barras 1m CSV (todos los años)
       GitHub: https://github.com/Jpescudero/backtesting-engine/blob/main/src/data/bars1m_to_excel.py
 
-    csv_1m_to_npz.py          # CSV barras 1m -> NPZ (ts, o, h, l, c, v)
+    csv_1m_to_npz.py
+      # CSV barras 1m -> NPZ (ts, o, h, l, c, v)
       GitHub: https://github.com/Jpescudero/backtesting-engine/blob/main/src/data/csv_1m_to_npz.py
 
-    parquet_to_npz.py         # barras parquet -> NPZ (función genérica bars_df_to_npz_arrays)
+    parquet_to_npz.py
+      # barras parquet -> NPZ (función genérica bars_df_to_npz_arrays)
       GitHub: https://github.com/Jpescudero/backtesting-engine/blob/main/src/data/parquet_to_npz.py
 
-    feeds.py                  # NPZOHLCVFeed (carga NPZ -> OHLCVArrays para Numba)
+    feeds.py
+      # NPZOHLCVFeed (carga NPZ -> OHLCVArrays para Numba)
       GitHub: https://github.com/Jpescudero/backtesting-engine/blob/main/src/data/feeds.py
 
-    organize_darwinex_files.py# (pendiente) organiza logs Darwinex mezclados en subcarpetas BID/ASK
+    organize_darwinex_files.py
+      # (pendiente) organiza logs Darwinex mezclados en subcarpetas BID/ASK
       GitHub (planificado): https://github.com/Jpescudero/backtesting-engine/blob/main/src/data/organize_darwinex_files.py
 
   engine\
@@ -54,7 +67,8 @@ src\
 
     __init__.py  (opcional)
 
-    core.py                   # BacktestConfig, BacktestResult, motor numba, run_backtest_basic
+    core.py
+      # BacktestConfig, BacktestResult, motor numba, run_backtest_with_signals
       GitHub: https://github.com/Jpescudero/backtesting-engine/blob/main/src/engine/core.py
 
   analytics\
@@ -62,18 +76,33 @@ src\
 
     __init__.py  (opcional)
 
-    metrics.py                # equity_curve_metrics, trades_metrics (estilo Darwinex)
+    metrics.py
+      # equity_curve_metrics, trades_metrics (estilo Darwinex)
       GitHub: https://github.com/Jpescudero/backtesting-engine/blob/main/src/analytics/metrics.py
 
-    reporting.py              # equity_to_series, trades_to_dataframe
+    reporting.py
+      # equity_to_series, trades_to_dataframe
       GitHub: https://github.com/Jpescudero/backtesting-engine/blob/main/src/analytics/reporting.py
 
-    plots.py                  # plot_equity_curve, plot_trades_per_month, etc.
+    plots.py
+      # plot_equity_curve, plot_trades_per_month, etc.
       GitHub: https://github.com/Jpescudero/backtesting-engine/blob/main/src/analytics/plots.py
 
+    backtest_output.py
+      # helpers para guardar resumen (equity/trades/estadísticas) a Excel/JSON
+      GitHub: https://github.com/Jpescudero/backtesting-engine/blob/main/src/analytics/backtest_output.py
+
+    trade_plots.py
+      # plots de mejores/peores trades sobre barras 1m (entrada/salida marcadas)
+      GitHub: https://github.com/Jpescudero/backtesting-engine/blob/main/src/analytics/trade_plots.py
+
   strategies\
-    # Aquí irán las estrategias concretas (aún por definir)
-    # p.ej.: momentum_opening.py, sweep_reversal.py, etc.
+    # Estrategias concretas
+
+    barrida_apertura.py
+      # Estrategia de "barrida" en apertura (9:00 y 15:00, hora Europa/Madrid)
+      GitHub: https://github.com/Jpescudero/backtesting-engine/blob/main/src/strategies/barrida_apertura.py
+
     # GitHub (carpeta): https://github.com/Jpescudero/backtesting-engine/tree/main/src/strategies
 
   visualization\
@@ -86,7 +115,8 @@ DATOS
 data\
   raw\
     darwinex\
-      NDXm\                   # Datos crudos Darwinex (logs BID/ASK comprimidos)
+      NDXm\
+        # Datos crudos Darwinex (logs BID/ASK comprimidos)
         # Ejemplo de estructura esperada:
         #   BID\
         #     NDXm_BID_2021-04-09_14.log.gz
@@ -96,7 +126,8 @@ data\
         #     ...
 
   parquet\
-    ticks\                    # Parquets de ticks ya limpios y fusionados
+    ticks\
+      # Parquets de ticks ya limpios y fusionados
       NDXm\
         2021\
           NDXm_2021-04-09_14.parquet
@@ -115,8 +146,9 @@ data\
 
   npz\
     NDXm\
-      NDXm_all_1m.npz         # barras 1m de todos los años en arrays NumPy (ts,o,h,l,c,v)
-      # en el futuro: NDXm_2021_1m.npz, etc., si generas por año/timeframe
+      NDXm_all_1m.npz
+        # barras 1m de todos los años en arrays NumPy (ts,o,h,l,c,v)
+        # generado por csv_1m_to_npz.csv_1m_to_npz()
 
   other\
     barras_1min_NDXm_todos_anios.csv
@@ -126,35 +158,39 @@ data\
 
 NOTEBOOKS / REPORTS
 -------------------
-notebooks\                 # Notebooks de exploración y estudios
-reports\                   # Informes generados (PDF, HTML, etc.)
+notebooks\
+  # Notebooks de exploración y estudios
+
+reports\
+  # Informes generados (Excel, PNG, etc.)
+  NDXm\
+    backtest_NDXm_barrida_apertura.xlsx
+    backtest_NDXm_barrida_apertura.json
+    best_worst_trades.png
 
 
 CONSTANTES DE RUTAS (paths.py)
 ------------------------------
 # Definidas en src/config/paths.py
 
-PROJECT_ROOT        = raíz del proyecto (donde está main.py)
-SRC_DIR             = PROJECT_ROOT\src\
-DATA_DIR            = PROJECT_ROOT\data\
-NOTEBOOKS_DIR       = PROJECT_ROOT\notebooks\
-REPORTS_DIR         = PROJECT_ROOT\reports\
+PROJECT_ROOT     = raíz del proyecto (donde está main.py)
+SRC_DIR          = PROJECT_ROOT\src\
+DATA_DIR         = PROJECT_ROOT\data\
+NOTEBOOKS_DIR    = PROJECT_ROOT\notebooks\
+REPORTS_DIR      = PROJECT_ROOT\reports\
 
-CONFIG_DIR          = SRC_DIR\config\
-DATA_MODULE_DIR     = SRC_DIR\data\
-ENGINE_DIR          = SRC_DIR\engine\
-STRATEGIES_DIR      = SRC_DIR\strategies\
-VISUALIZATION_DIR   = SRC_DIR\visualization\
-ANALYTICS_DIR       = SRC_DIR\analytics\
+CONFIG_DIR       = SRC_DIR\config\
+DATA_MODULE_DIR  = SRC_DIR\data\
+ENGINE_DIR       = SRC_DIR\engine\
+STRATEGIES_DIR   = SRC_DIR\strategies\
+VISUALIZATION_DIR= SRC_DIR\visualization\
+ANALYTICS_DIR    = SRC_DIR\analytics\
 
-RAW_DATA_DIR        = DATA_DIR\raw\
-DARWINEX_RAW_DIR    = RAW_DATA_DIR\darwinex\
-
-PARQUET_DIR         = DATA_DIR\parquet\
-PARQUET_TICKS_DIR   = PARQUET_DIR\ticks\
+RAW_DATA_DIR     = DATA_DIR\raw\
+DARWINEX_RAW_DIR = RAW_DATA_DIR\darwinex\
+PARQUET_DIR      = DATA_DIR\parquet\
+PARQUET_TICKS_DIR= PARQUET_DIR\ticks\
 PARQUET_BARS_1M_DIR = PARQUET_DIR\bars_1m\
-
-NPZ_DIR             = DATA_DIR\npz\
-NPZ_NDXM_DIR        = NPZ_DIR\NDXm\
-
-OTHER_DATA_DIR      = DATA_DIR\other\
+NPZ_DIR          = DATA_DIR\npz\
+NPZ_NDXM_DIR     = NPZ_DIR\NDXm\
+OTHER_DATA_DIR   = DATA_DIR\other\
