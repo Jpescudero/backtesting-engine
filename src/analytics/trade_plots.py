@@ -1,358 +1,341 @@
 # src/analytics/trade_plots.py
-"""
-Plots específicos para analizar trades individuales.
-
-Incluye una función para dibujar las mejores y peores
-operaciones (por PnL) sobre barras de 1 minuto, marcando
-entrada y salida.
-
-Mejoras:
-- Eje X con timestamps legibles (si data.ts está disponible).
-- Por defecto, dibuja 3 mejores + 3 peores trades.
-"""
-
 from __future__ import annotations
 
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Tuple, Optional
+from typing import Iterable, Optional, Tuple
 
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
 
+try:
+    # mplfinance es ligero y cómodo para velas
+    from mplfinance.original_flavor import candlestick_ohlc
+except ImportError:  # pragma: no cover
+    candlestick_ohlc = None
 
-def _extract_arrays(
-    data,
-) -> Tuple[
-    np.ndarray,
-    np.ndarray,
-    np.ndarray,
-    np.ndarray,
-    np.ndarray,
-    Optional[np.ndarray],
-]:
-    """
-    Extrae arrays (o, h, l, c, v, ts) de la estructura `data`
-    devuelta por NPZOHLCVFeed.
-
-    Soporta:
-      - dataclass/objeto con atributos .o, .h, .l, .c, .v, .ts
-      - dict con claves 'o','h','l','c','v','ts'
-      - dict con claves 'open','high','low','close','volume','timestamp'
-    """
-    ts = None
-
-    # Objeto con atributos
-    for keys in (("o", "h", "l", "c"), ("open", "high", "low", "close")):
-        if all(hasattr(data, k) for k in keys):
-            o = np.asarray(getattr(data, keys[0]))
-            h = np.asarray(getattr(data, keys[1]))
-            l = np.asarray(getattr(data, keys[2]))
-            c = np.asarray(getattr(data, keys[3]))
-            v = np.asarray(getattr(data, "v", np.zeros_like(o)))
-
-            if hasattr(data, "ts"):
-                ts = np.asarray(getattr(data, "ts"))
-            elif hasattr(data, "timestamp"):
-                ts = np.asarray(getattr(data, "timestamp"))
-            elif hasattr(data, "time"):
-                ts = np.asarray(getattr(data, "time"))
-
-            return o, h, l, c, v, ts
-
-    # Diccionario
-    if isinstance(data, dict):
-        for keys in (("o", "h", "l", "c"), ("open", "high", "low", "close")):
-            if all(k in data for k in keys):
-                o = np.asarray(data[keys[0]])
-                h = np.asarray(data[keys[1]])
-                l = np.asarray(data[keys[2]])
-                c = np.asarray(data[keys[3]])
-                v = np.asarray(data.get("v") or data.get("volume") or np.zeros_like(o))
-
-                for ts_key in ("ts", "timestamp", "time"):
-                    if ts_key in data:
-                        ts = np.asarray(data[ts_key])
-                        break
-
-                return o, h, l, c, v, ts
-
-    raise TypeError("No se han podido extraer arrays OHLC de `data`.")
+from src.data.feeds import NPZOHLCVFeed, OHLCVArrays
 
 
-def _build_timestamps(ts_array: Optional[np.ndarray], n: int) -> Optional[pd.DatetimeIndex]:
-    """
-    Intenta construir un DatetimeIndex legible a partir de ts_array.
-    Si no se puede, devuelve None y se usará el índice de barras.
-    """
-    if ts_array is None:
-        return None
-
-    ts_array = np.asarray(ts_array)
-    try:
-        # Si ya es datetime64, esto funciona directo
-        ts = pd.to_datetime(ts_array)
-    except Exception:
-        # Como fallback, probamos con unidad "ns" (típico epoch_ns)
-        try:
-            ts = pd.to_datetime(ts_array, unit="ns", origin="unix")
-        except Exception:
-            return None
-
-    if len(ts) != n:
-        # Inconsistencia de longitud; mejor no usarlo
-        return None
-
-    return pd.DatetimeIndex(ts)
+@dataclass
+class BestWorstConfig:
+    top_n: int = 3
+    window_bars_before: int = 30
+    window_bars_after: int = 60
+    timeframe: str = "1m"
+    symbol: str = "NDXm"
+    figsize: Tuple[int, int] = (16, 10)
 
 
-def select_best_and_worst_trades(
-    trades_df: pd.DataFrame,
-    n_best: int = 3,
-    n_worst: int = 3,
-    pnl_col: str = "pnl",
-) -> Tuple[pd.DataFrame, pd.DataFrame]:
-    """
-    Devuelve dos DataFrames:
-      - best_trades: top n_best por PnL descendente
-      - worst_trades: top n_worst por PnL ascendente
-    """
-    if pnl_col not in trades_df.columns:
-        raise KeyError(f"No se encuentra la columna de PnL '{pnl_col}' en trades_df.columns.")
+def _ts_to_datetime(ts: np.ndarray) -> np.ndarray:
+    """Convierte array de timestamps a datetime64[ns] de forma robusta."""
+    if np.issubdtype(ts.dtype, np.datetime64):
+        return ts.astype("datetime64[ns]")
 
-    sorted_trades = trades_df.sort_values(pnl_col, ascending=False)
-    best = sorted_trades.head(n_best)
-    worst = sorted_trades.tail(n_worst).sort_values(pnl_col, ascending=True)
-    return best, worst
+    ts0 = int(ts[0])
+    if ts0 > 10 ** 14:
+        unit = "ns"
+    elif ts0 > 10 ** 11:
+        unit = "ms"
+    else:
+        unit = "s"
+    return pd.to_datetime(ts, unit=unit).values.astype("datetime64[ns]")
 
 
-def _plot_single_trade_bars(
-    ax: plt.Axes,
-    *,
-    o: np.ndarray,
-    h: np.ndarray,
-    l: np.ndarray,
-    c: np.ndarray,
+def _build_window_indices(
     entry_idx: int,
     exit_idx: int,
-    timestamps: Optional[pd.DatetimeIndex],
-    window: int = 30,
-    title: str = "",
-    direction: Optional[int] = None,
+    n_bars: int,
+    before: int,
+    after: int,
+) -> slice:
+    start = max(0, entry_idx - before)
+    end = min(n_bars - 1, exit_idx + after)
+    return slice(start, end + 1)
+
+
+def _maybe_get_level(row: pd.Series, candidates: Iterable[str]) -> Optional[float]:
+    """Devuelve el primer nivel disponible en la fila entre varios posibles nombres."""
+    for name in candidates:
+        if name in row and pd.notna(row[name]):
+            try:
+                return float(row[name])
+            except Exception:
+                continue
+    return None
+
+
+def _plot_single_trade(
+    ax: plt.Axes,
+    trade: pd.Series,
+    data: OHLCVArrays,
+    cfg: BestWorstConfig,
+    side_label: str,
+    rank: int,
 ) -> None:
-    """
-    Dibuja barras OHLC simplificadas alrededor de un trade concreto.
+    """Dibuja una única operación (velas + entrada/salida + SL/TP)."""
+    n_bars = data.c.shape[0]
+    entry_idx = int(trade["entry_idx"])
+    exit_idx = int(trade["exit_idx"])
 
-    Si `timestamps` no es None, el eje X usa fechas/horas legibles.
-    Si es None, usa el índice de barras (0, 1, 2, ...).
-    """
-    n = len(c)
-    entry_idx = int(entry_idx)
-    exit_idx = int(exit_idx)
+    window = _build_window_indices(
+        entry_idx=entry_idx,
+        exit_idx=exit_idx,
+        n_bars=n_bars,
+        before=cfg.window_bars_before,
+        after=cfg.window_bars_after,
+    )
 
-    left = max(0, min(entry_idx, exit_idx) - window)
-    right = min(n - 1, max(entry_idx, exit_idx) + window)
+    ts_dt = _ts_to_datetime(data.ts[window])
+    o = data.o[window]
+    h = data.h[window]
+    l = data.l[window]
+    c = data.c[window]
 
-    idx_range = np.arange(left, right + 1, dtype=int)
+    df = pd.DataFrame(
+        {
+            "timestamp": pd.to_datetime(ts_dt),
+            "open": o,
+            "high": h,
+            "low": l,
+            "close": c,
+        }
+    )
+    # Evitar FutureWarning: convertimos explícitamente a np.array
+    df["mdates"] = mdates.date2num(np.array(df["timestamp"].dt.to_pydatetime()))
 
-    if timestamps is not None:
-        x_vals = timestamps[idx_range]
-        x_entry = timestamps[entry_idx]
-        x_exit = timestamps[exit_idx]
+    if candlestick_ohlc is None:
+        # fallback sencillo: pseudo-velas
+        for _, row_b in df.iterrows():
+            ax.vlines(row_b["mdates"], row_b["low"], row_b["high"], linewidth=0.6)
+            color = "green" if row_b["close"] >= row_b["open"] else "red"
+            ax.vlines(
+                row_b["mdates"],
+                row_b["open"],
+                row_b["close"],
+                linewidth=3,
+                color=color,
+            )
     else:
-        x_vals = idx_range
-        x_entry = entry_idx
-        x_exit = exit_idx
-
-    # Dibujamos barras tipo "OHLC" simplificadas
-    for pos, i in enumerate(idx_range):
-        x = x_vals[pos]
-        color = "tab:green" if c[i] >= o[i] else "tab:red"
-        # línea vertical low-high
-        ax.vlines(x, l[i], h[i], linewidth=1, alpha=0.8, color=color)
-        # ticks horizontales en open/close (ligeramente desplazados en X)
-        if timestamps is not None:
-            # pequeño desplazamiento en tiempo
-            delta = (timestamps[1] - timestamps[0]) if len(timestamps) > 1 else pd.Timedelta(minutes=1)
-            ax.hlines(o[i], x - 0.2 * delta, x, linewidth=1.5, color=color)
-            ax.hlines(c[i], x, x + 0.2 * delta, linewidth=1.5, color=color)
-        else:
-            ax.hlines(o[i], x - 0.2, x, linewidth=1.5, color=color)
-            ax.hlines(c[i], x, x + 0.2, linewidth=1.5, color=color)
-
-    # Señales de entrada/salida
-    entry_price = c[entry_idx]
-    exit_price = c[exit_idx]
-
-    ax.axvline(x_entry, linestyle="--", linewidth=1.0, color="blue", alpha=0.9)
-    ax.axvline(x_exit, linestyle="--", linewidth=1.0, color="black", alpha=0.9)
-
-    ax.scatter([x_entry], [entry_price], marker="^", s=40, color="blue", zorder=5)
-    ax.scatter([x_exit], [exit_price], marker="v", s=40, color="black", zorder=5)
-
-    if direction is not None:
-        if direction > 0:
-            dir_txt = "LONG"
-        elif direction < 0:
-            dir_txt = "SHORT"
-        else:
-            dir_txt = "FLAT"
-        ax.text(
-            0.01,
-            0.97,
-            dir_txt,
-            transform=ax.transAxes,
-            va="top",
-            ha="left",
-            fontsize=8,
-            bbox=dict(boxstyle="round", facecolor="white", alpha=0.6),
+        ohlc = df[["mdates", "open", "high", "low", "close"]].values
+        candlestick_ohlc(
+            ax,
+            ohlc,
+            width=0.0008,
+            colorup="green",
+            colordown="red",
+            alpha=0.8,
         )
 
+    # Marcar entrada y salida
+    entry_time = pd.to_datetime(trade["entry_time"])
+    exit_time = pd.to_datetime(trade["exit_time"])
+    entry_num = mdates.date2num(entry_time.to_pydatetime())
+    exit_num = mdates.date2num(exit_time.to_pydatetime())
+
+    entry_price = float(trade["entry_price"])
+    exit_price = float(trade["exit_price"])
+
+    ax.scatter(entry_num, entry_price, marker="^", color="blue", s=50, zorder=5)
+    ax.scatter(exit_num, exit_price, marker="v", color="black", s=50, zorder=5)
+
+    # SL / TP: primero intentamos leer columnas (por si en el futuro las añades)
+    sl = _maybe_get_level(
+        trade,
+        ["stop_loss", "sl_price", "sl", "stop_loss_price"],
+    )
+    tp = _maybe_get_level(
+        trade,
+        ["take_profit", "tp_price", "tp", "take_profit_price"],
+    )
+
+    # Si no vienen en el DataFrame, los calculamos a partir de % y side
+    # (replica BacktestConfig del main.py: sl_pct=0.01, tp_pct=0.02)
+    sl_pct = float(trade.get("sl_pct", 0.01))
+    tp_pct = float(trade.get("tp_pct", 0.02))
+    side = float(trade.get("side", 1.0))  # StrategyBarridaApertura es long-only (=1)
+
+    if sl is None:
+        if side >= 0:
+            sl = entry_price * (1.0 - sl_pct)
+        else:
+            sl = entry_price * (1.0 + sl_pct)
+
+    if tp is None:
+        if side >= 0:
+            tp = entry_price * (1.0 + tp_pct)
+        else:
+            tp = entry_price * (1.0 - tp_pct)
+
+    # Rango completo del gráfico para que las líneas sean "como órdenes" en MT
+    xmin = df["mdates"].min()
+    xmax = df["mdates"].max()
+
+    if sl is not None:
+        ax.hlines(
+            sl,
+            xmin=xmin,
+            xmax=xmax,
+            colors="red",
+            linestyles="--",
+            linewidth=1.2,
+            label="SL",
+        )
+    if tp is not None:
+        ax.hlines(
+            tp,
+            xmin=xmin,
+            xmax=xmax,
+            colors="green",
+            linestyles="--",
+            linewidth=1.2,
+            label="TP",
+        )
+
+    # Eje X sólo hora
+    ax.xaxis.set_major_formatter(mdates.DateFormatter("%H:%M"))
+    ax.tick_params(axis="x", rotation=45)
+
+    # Título con día
+    trade_day = entry_time.strftime("%Y-%m-%d")
+    trade_id = int(trade["trade_id"]) if "trade_id" in trade else int(trade.name)
+    pnl = float(trade["pnl"])
+
+    title = f"{side_label} #{rank} | {trade_day} | trade_id={trade_id} | PnL={pnl:.2f}"
     ax.set_title(title, fontsize=9)
 
-    if timestamps is not None:
-        ax.set_xlabel("Hora")
-        ax.xaxis.set_major_formatter(mdates.DateFormatter("%Y-%m-%d\n%H:%M"))
-        ax.tick_params(axis="x", rotation=0)
-    else:
-        ax.set_xlabel("Barra (1m)")
-
-    ax.grid(True, alpha=0.2)
+    ax.set_ylabel("Precio")
 
 
 def plot_best_and_worst_trades(
-    *,
     trades_df: pd.DataFrame,
-    data,
+    data: OHLCVArrays,
     n_best: int = 3,
-    n_worst: int = 3,
-    pnl_col: str = "pnl",
-    entry_col: str = "entry_idx",
-    exit_col: str = "exit_idx",
-    direction_col: str = "direction",
-    window: int = 30,
-    figsize: Tuple[float, float] = (14.0, 10.0),
+    cfg: Optional[BestWorstConfig] = None,
     save_path: Optional[Path] = None,
+    **kwargs,
 ) -> plt.Figure:
-    """Dibuja las mejores y peores operaciones en una cuadrícula de 3 x 2 (por defecto).
+    """Genera figura con las N mejores y N peores operaciones.
 
-    Parámetros clave:
-        trades_df: resultado de trades_to_dataframe(...)
-        data: objeto devuelto por NPZOHLCVFeed.load_all()
-        n_best, n_worst: límite de trades buenos/malos a mostrar
-        pnl_col: columna con el PnL de cada trade
-        entry_col/exit_col: columnas con los índices de barra de entrada/salida
-        direction_col: opcional, si existe indica LONG/SHORT con +1/-1
-        window: nº de barras antes y después del trade a dibujar
-        figsize: tamaño total de la figura
-        save_path: si se indica, se guarda la figura en esa ruta (PNG)
+    Compatible con la llamada de main.py:
+        plot_best_and_worst_trades(trades_df=..., data=..., n_best=..., ...)
     """
-    if entry_col not in trades_df.columns or exit_col not in trades_df.columns:
-        raise KeyError(
-            f"Se requieren las columnas '{entry_col}' y '{exit_col}' en trades_df para poder dibujar los trades."
-        )
+    trades = trades_df
 
-    if len(trades_df) == 0:
-        fig, ax = plt.subplots(figsize=(8, 4))
-        ax.text(0.5, 0.5, "No hay trades para representar", ha="center", va="center")
-        ax.axis("off")
-        if save_path is not None:
-            save_path = Path(save_path).resolve()
-            save_path.parent.mkdir(parents=True, exist_ok=True)
-            fig.savefig(save_path, dpi=150, bbox_inches="tight")
-        return fig
+    if trades.empty:
+        raise ValueError("No hay trades para plotear mejores/peores.")
 
-    o, h, l, c, _, ts = _extract_arrays(data)
-    timestamps = _build_timestamps(ts, len(c))
+    n_rows = min(n_best, len(trades))
 
-    best_trades, worst_trades = select_best_and_worst_trades(
-        trades_df=trades_df,
-        n_best=n_best,
-        n_worst=n_worst,
-        pnl_col=pnl_col,
+    if cfg is None:
+        cfg = BestWorstConfig(top_n=n_rows)
+    else:
+        cfg.top_n = n_rows
+
+    required_cols = {
+        "entry_idx",
+        "exit_idx",
+        "entry_time",
+        "exit_time",
+        "entry_price",
+        "exit_price",
+        "pnl",
+    }
+    missing = required_cols - set(trades.columns)
+    if missing:
+        raise ValueError(f"Faltan columnas en trades para poder plotear: {missing}")
+
+    best = trades.nlargest(cfg.top_n, "pnl")
+    worst = trades.nsmallest(cfg.top_n, "pnl")
+
+    fig, axes = plt.subplots(
+        nrows=cfg.top_n,
+        ncols=2,
+        figsize=cfg.figsize,
+        sharex=False,
     )
 
-    n_best_eff = min(len(best_trades), n_best)
-    n_worst_eff = min(len(worst_trades), n_worst)
-    n_rows = max(n_best_eff, n_worst_eff, 1)
-    n_cols = 2  # izquierda: mejores, derecha: peores
+    if cfg.top_n == 1:
+        axes = np.array([[axes[0], axes[1]]])  # type: ignore[index]
 
-    fig, axes = plt.subplots(n_rows, n_cols, figsize=figsize, sharex=False, sharey=False)
-    if n_rows == 1:
-        axes = np.array([axes])  # shape (1, 2)
-
-    axes = np.asarray(axes)
-
-    # Mejores trades
-    for row_idx in range(n_rows):
-        ax = axes[row_idx, 0]
-        if row_idx >= n_best_eff:
-            ax.axis("off")
-            continue
-
-        row = best_trades.iloc[row_idx]
-        entry_idx = int(row[entry_col])
-        exit_idx = int(row[exit_col])
-        direction = None
-        if direction_col in trades_df.columns:
-            try:
-                direction = int(row[direction_col])
-            except Exception:
-                direction = None
-
-        title = f"BEST #{row_idx+1} | trade_id={row.get('trade_id', row.name)} | PnL={row[pnl_col]:.2f}"
-        _plot_single_trade_bars(
-            ax,
-            o=o,
-            h=h,
-            l=l,
-            c=c,
-            entry_idx=entry_idx,
-            exit_idx=exit_idx,
-            timestamps=timestamps,
-            window=window,
-            title=title,
-            direction=direction,
+    for i in range(cfg.top_n):
+        _plot_single_trade(
+            ax=axes[i, 0],
+            trade=best.iloc[i],
+            data=data,
+            cfg=cfg,
+            side_label="BEST",
+            rank=i + 1,
+        )
+        _plot_single_trade(
+            ax=axes[i, 1],
+            trade=worst.iloc[i],
+            data=data,
+            cfg=cfg,
+            side_label="WORST",
+            rank=i + 1,
         )
 
-    # Peores trades
-    for row_idx in range(n_rows):
-        ax = axes[row_idx, 1]
-        if row_idx >= n_worst_eff:
-            ax.axis("off")
-            continue
-
-        row = worst_trades.iloc[row_idx]
-        entry_idx = int(row[entry_col])
-        exit_idx = int(row[exit_col])
-        direction = None
-        if direction_col in trades_df.columns:
-            try:
-                direction = int(row[direction_col])
-            except Exception:
-                direction = None
-
-        title = f"WORST #{row_idx+1} | trade_id={row.get('trade_id', row.name)} | PnL={row[pnl_col]:.2f}"
-        _plot_single_trade_bars(
-            ax,
-            o=o,
-            h=h,
-            l=l,
-            c=c,
-            entry_idx=entry_idx,
-            exit_idx=exit_idx,
-            timestamps=timestamps,
-            window=window,
-            title=title,
-            direction=direction,
-        )
-
-    fig.tight_layout()
+    plt.tight_layout()
 
     if save_path is not None:
-        save_path = Path(save_path).resolve()
+        save_path = Path(save_path)
         save_path.parent.mkdir(parents=True, exist_ok=True)
         fig.savefig(save_path, dpi=150, bbox_inches="tight")
+        print(f"[trade_plots] Figura guardada en: {save_path}")
 
     return fig
+
+
+def load_trades_from_excel(excel_path: Path | str) -> pd.DataFrame:
+    """Helper para leer la hoja 'trades' del Excel de backtest."""
+    excel_path = Path(excel_path)
+    df = pd.read_excel(excel_path, sheet_name="trades")
+    if "entry_time" in df:
+        df["entry_time"] = pd.to_datetime(df["entry_time"])
+    if "exit_time" in df:
+        df["exit_time"] = pd.to_datetime(df["exit_time"])
+    return df
+
+
+def plot_best_and_worst_from_files(
+    excel_path: Path | str,
+    symbol: str,
+    timeframe: str = "1m",
+    cfg: Optional[BestWorstConfig] = None,
+    save_path: Optional[Path] = None,
+) -> plt.Figure:
+    """Convenience: carga datos NPZ + Excel y genera el plot."""
+    if cfg is None:
+        cfg = BestWorstConfig(symbol=symbol, timeframe=timeframe)
+
+    trades = load_trades_from_excel(excel_path)
+    feed = NPZOHLCVFeed(symbol=symbol, timeframe=timeframe)
+    data = feed.load_all()
+
+    return plot_best_and_worst_trades(
+        trades_df=trades,
+        data=data,
+        n_best=cfg.top_n,
+        cfg=cfg,
+        save_path=save_path,
+    )
+
+
+if __name__ == "__main__":
+    # Ejemplo rápido (ajusta rutas a tu entorno)
+    default_excel = Path("data/backtests/backtest_NDXm_barrida_apertura.xlsx")
+    out_png = default_excel.with_name("best_worst_trades.png")
+
+    if default_excel.exists():
+        plot_best_and_worst_from_files(
+            excel_path=default_excel,
+            symbol="NDXm",
+            timeframe="1m",
+            save_path=out_png,
+        )
+        plt.show()
+    else:
+        print(f"[trade_plots] No se encontró el Excel por defecto: {default_excel}")
