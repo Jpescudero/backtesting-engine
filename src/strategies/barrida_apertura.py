@@ -8,7 +8,7 @@ from typing import Any, Dict, Tuple
 import numpy as np
 import pandas as pd
 
-from src.data.feeds import OHLCVArrays  # tipo contenedor ts, o, h, l, c, v
+from src.data.feeds import OHLCVArrays  # contenedor ts, o, h, l, c, v
 
 
 @dataclass
@@ -16,14 +16,14 @@ class StrategyResult:
     """
     Contenedor sencillo para las señales generadas por la estrategia.
     """
-    signals: np.ndarray          # 1 = entrar largo, 0 = no hacer nada
+    signals: np.ndarray          # 1 = entrar largo, 0 = nada
     meta: Dict[str, Any]
 
 
 @dataclass
 class BarridaParams:
     """
-    Parámetros de la estrategia de "barrida" en aperturas.
+    Parámetros de la estrategia de "barrida" en aperturas (SOLO LARGOS).
     """
     volume_percentile: float = 80.0
     use_two_bearish_bars: bool = True
@@ -35,7 +35,7 @@ class BarridaParams:
 
     # Filtro de pánico: cambio de precio mínimo aceptable en los últimos N minutos
     panic_lookback: int = 60           # en barras (1m)
-    panic_threshold: float = -0.0075   # -0.75 %
+    panic_threshold: float = -0.0075   # evitar caídas fuertes
 
     # Confirmación de reversal
     confirm_reversal: bool = True
@@ -47,17 +47,17 @@ class BarridaParams:
 
 class StrategyBarridaApertura:
     """
-    Estrategia de "barrida" en aperturas:
+    Estrategia de "barrida" en aperturas (SOLO LARGOS):
 
-      1) Ventanas alrededor de las aperturas definidas (09:00 y 15:00).
-      2) Busca 2 velas bajistas consecutivas con volumen alto.
-      3) En la barra siguiente, si hay reversal (vela alcista) y
-         la subida es suficientemente fuerte vs ATR, genera señal de entrada.
-      4) Aplica un filtro de "no pánico" basado en el rendimiento
-         de la última hora.
+      1) Ventanas alrededor de las aperturas (09:00 y 15:00).
+      2) Busca 2 velas bajistas consecutivas con volumen alto
+         ("flush" bajista).
+      3) En la barra siguiente, si hay reversal alcista fuerte
+         (confirmado y medido vs ATR), genera señal de entrada larga.
+      4) Aplica filtro de "no pánico" (evitar caídas extremas recientes).
 
-    Las salidas (SL, TP, tiempo máximo) las gestiona el motor de
-    backtesting vía run_backtest_with_signals.
+    Las salidas (SL/TP/time_stop) las gestiona el motor con
+    run_backtest_with_signals.
     """
 
     def __init__(

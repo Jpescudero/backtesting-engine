@@ -174,14 +174,16 @@ def run_single_backtest(symbol: str = "NDXm") -> None:
     # 4) Backtest (motor numba)
     t_bt_start = time.perf_counter()
     config = BacktestConfig(
-        initial_cash=100_000.0,
-        commission_per_trade=1.0,
-        trade_size=1.0,
-        slippage=0.0,
+        initial_cash=2000.0,
         sl_pct=0.01,
         tp_pct=0.02,
         max_bars_in_trade=60,
-        entry_threshold=0.0,
+        commission_per_trade=1.0,
+        slippage=0.0,
+        # AQUÍ DECIDES LO AGRESIVO/CONSERVADOR:
+        risk_per_trade_pct=0.01,  # 1% de equity por trade
+        point_value=1.0,          # ajusta si tu producto tiene otro valor por punto
+        trade_size=1.0,           # usado sólo si risk_per_trade_pct <= 0
     )
 
     result = run_backtest_with_signals(data, strat_res.signals, config=config)
