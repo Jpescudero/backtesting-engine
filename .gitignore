@@ -26,3 +26,6 @@ __pycache__/
 
 # Reportes
 reports/
+
+#bash
+syn_from_structure.sh
