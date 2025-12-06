@@ -1,14 +1,13 @@
 # main.py
 """
-Punto de entrada para lanzar un backtest sencillo y generar outputs fáciles de analizar/compartir.
+Punto de entrada para lanzar un backtest sencillo y generar outputs fáciles
+de analizar/compartir.
 
 Incluye:
 - Estadísticas de equity y de trades.
-- (Opcional) Ficheros Excel + JSON (modo ultraligero).
-- (Opcional) Figura con las mejores y peores operaciones (3+3).
-- (Opcional) Gráficas equity + nº trades/mes.
-
-Además, mide y muestra tiempos de ejecución por fase para identificar cuellos de botella.
+- Ficheros Excel + JSON (modo ultraligero).
+- Figura con las mejores y peores operaciones (3+3).
+- Gráficas equity + nº trades/mes.
 """
 
 from __future__ import annotations
@@ -21,7 +20,7 @@ import matplotlib.pyplot as plt
 from src.config.paths import (
     ensure_directories_exist,
     PARQUET_TICKS_DIR,
-    OTHER_DATA_DIR,
+    OTHER_DATA_DIR,  # ahora no lo usamos, pero lo dejamos importado
     NPZ_DIR,
     REPORTS_DIR,
 )
@@ -34,7 +33,10 @@ from src.data.bars1m_to_excel import (
 from src.data.csv_1m_to_npz import csv_1m_to_npz
 from src.data.feeds import NPZOHLCVFeed
 
+# Motor basado en señales externas
 from src.engine.core import BacktestConfig, run_backtest_with_signals
+
+# Estrategia de barrida en aperturas (solo largos)
 from src.strategies.barrida_apertura import StrategyBarridaApertura
 
 from src.analytics.reporting import equity_to_series, trades_to_dataframe
@@ -69,6 +71,7 @@ def ensure_ticks_and_csv(symbol: str = DEFAULT_SYMBOL) -> Path:
     """
     ensure_directories_exist()
 
+    # 1) Parquets de ticks
     try:
         tick_files = list_tick_files(PARQUET_TICKS_DIR, symbol=symbol)
     except FileNotFoundError:
@@ -84,6 +87,7 @@ def ensure_ticks_and_csv(symbol: str = DEFAULT_SYMBOL) -> Path:
                 f"No se han podido generar parquets de ticks para {symbol}"
             )
 
+    # 2) CSV de barras de 1 minuto
     bars_csv = get_default_output_csv(symbol=symbol)
     if not bars_csv.exists():
         print(f"[ensure_ticks_and_csv] No existe CSV de barras 1m para {symbol}. "
@@ -108,7 +112,7 @@ def ensure_npz_from_csv(symbol: str = DEFAULT_SYMBOL, timeframe: str = "1m") -> 
     symbol_npz_dir = (NPZ_DIR / symbol).resolve()
     symbol_npz_dir.mkdir(parents=True, exist_ok=True)
 
-    pattern = f"*_{timeframe}.npz" if not timeframe.startswith("_") else f"*{timeframe}.npz"
+    pattern = f"*_{timeframe}.npz"
     existing_npz = list(symbol_npz_dir.glob(pattern))
 
     if existing_npz:
@@ -121,7 +125,13 @@ def ensure_npz_from_csv(symbol: str = DEFAULT_SYMBOL, timeframe: str = "1m") -> 
     print(f"[ensure_npz_from_csv] No hay NPZ para {symbol} ({timeframe}). "
           f"Creando desde CSV 1m...")
     bars_csv = ensure_ticks_and_csv(symbol=symbol)
-    npz_path = csv_1m_to_npz(symbol=symbol, csv_path=bars_csv)
+
+    npz_path = csv_1m_to_npz(
+        csv_path=bars_csv,
+        symbol=symbol,
+        timeframe=timeframe,
+        out_dir=symbol_npz_dir,
+    )
 
     return npz_path
 
@@ -136,8 +146,6 @@ def run_single_backtest(symbol: str = "NDXm") -> None:
     - Datos 1m (NPZ)
     - Estrategia de barrida en aperturas (SOLO LARGOS)
     - Motor run_backtest_with_signals (Numba)
-
-    Además imprime tiempos por cada fase importante.
     """
     timings: dict[str, float] = {}
 
@@ -160,7 +168,7 @@ def run_single_backtest(symbol: str = "NDXm") -> None:
     t_feed_end = time.perf_counter()
     timings["02_carga_feed_npz"] = t_feed_end - t_feed_start
 
-    # 3) Generación de señales de la estrategia
+    # 3) Generación de señales de la estrategia (barrida apertura, sólo largos)
     t_strat_start = time.perf_counter()
     strategy = StrategyBarridaApertura(
         volume_percentile=80.0,
@@ -177,19 +185,18 @@ def run_single_backtest(symbol: str = "NDXm") -> None:
     # 4) Backtest (motor numba)
     t_bt_start = time.perf_counter()
 
-    # IMPORTANTE:
+    # Config:
     # - initial_cash = 2000.0 (tu capital actual)
-    # - trade_size = 0.1 => equivalente a 0.1 "contratos" / 0.1 €/punto aprox.
-    #   Si quieres más agresivo: súbelo (0.2, 0.5, 1.0...)
+    # - trade_size = 0.1 => fracción de contrato (0.1 "lotes")
     config = BacktestConfig(
         initial_cash=2000.0,
-        sl_pct=0.01,
-        tp_pct=0.02,
-        max_bars_in_trade=60,
         commission_per_trade=1.0,
+        trade_size=0.1,     # fracción de contrato
         slippage=0.0,
-        trade_size=0.1,     # fracción de contrato para poder operar con 2000 €
-        entry_threshold=0.0  # no se usa en la barrida, pero el dataclass lo pide
+        sl_pct=0.01,        # 1% SL
+        tp_pct=0.02,        # 2% TP
+        max_bars_in_trade=60,
+        entry_threshold=0.0,  # no se usa con esta estrategia, pero lo pide el dataclass
     )
 
     result = run_backtest_with_signals(data, strat_res.signals, config=config)
@@ -241,7 +248,7 @@ def run_single_backtest(symbol: str = "NDXm") -> None:
             base_dir=reports_dir,
             filename=f"backtest_{symbol}_barrida_apertura.xlsx",
             symbol=symbol,
-            strategy_name="barrida_apertura",
+            strategy_name="barrida_apertura_long_only",
             equity_series=eq_series,
             trades_df=trades_df,
             equity_stats=eq_stats,
@@ -275,8 +282,8 @@ def run_single_backtest(symbol: str = "NDXm") -> None:
         print("\n[run_single_backtest] GENERATE_MAIN_PLOTS=False, se omiten plots equity/trades_mes.")
         timings["08_plots_equity_trades_mes"] = 0.0
 
-    # 9) Figura de mejores/peores trades (opcional)
-    if GENERATE_TRADE_PLOTS:
+    # 9) Figura de mejores/peores trades (usa SL/TP tipo MetaTrader)
+    if GENERATE_TRADE_PLOTS and len(trades_df) > 0:
         t_tradeplots_start = time.perf_counter()
 
         print("\n[run_single_backtest] Generando figura de mejores/peores trades...")
@@ -285,13 +292,6 @@ def run_single_backtest(symbol: str = "NDXm") -> None:
             trades_df=trades_df,
             data=data,
             n_best=3,
-            n_worst=3,
-            pnl_col="pnl",
-            entry_col="entry_idx",
-            exit_col="exit_idx",
-            direction_col="direction",
-            window=30,
-            figsize=(14, 10),
             save_path=reports_dir / "best_worst_trades.png",
         )
         plt.show()
@@ -304,7 +304,7 @@ def run_single_backtest(symbol: str = "NDXm") -> None:
             reports_dir / "best_worst_trades.png",
         )
     else:
-        print("\n[run_single_backtest] GENERATE_TRADE_PLOTS=False, se omite figura de mejores/peores trades.")
+        print("\n[run_single_backtest] GENERATE_TRADE_PLOTS=False o no hay trades, se omite figura de mejores/peores trades.")
         timings["09_plots_mejores_peores_trades"] = 0.0
 
     t1 = time.perf_counter()
@@ -323,4 +323,5 @@ def main(symbol: str = "NDXm") -> None:
 
 if __name__ == "__main__":
     main(symbol="NDXm")
+
 
