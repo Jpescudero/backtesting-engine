@@ -1,4 +1,5 @@
 # src/engine/core.py
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -18,40 +19,20 @@ from src.data.feeds import OHLCVArrays
 class BacktestConfig:
     """
     Configuración básica del backtest.
-
-    Parámetros clásicos:
-      - initial_cash: equity inicial.
-      - commission_per_trade: comisión fija por operación (entrada o salida).
-      - trade_size: tamaño "por defecto" de la posición (en contratos/lotes).
-      - slippage: deslizamiento en puntos (se suma/reste al precio de entrada/salida).
-      - sl_pct / tp_pct: stop loss y take profit en % relativo al precio de entrada.
-      - max_bars_in_trade: duración máxima de la operación en barras.
-
-    Gestión de riesgo:
-      - risk_per_trade_pct: % de la equity que queremos arriesgar en cada trade.
-        Si es 0.0, se usa siempre trade_size fijo.
-      - point_value: valor monetario de 1 punto de movimiento del subyacente.
-        (Por ejemplo, 1.0 EUR/pt para muchos CFDs sobre índices).
-      - margin_rate: % de nominal que se exige como margen.
-        Si es 0.0, no se aplica chequeo de margen (comportamiento antiguo).
     """
+    # Parámetros de cuenta / ejecución
     initial_cash: float = 100_000.0
-    commission_per_trade: float = 1.0
-    trade_size: float = 1.0
-    slippage: float = 0.0
+    commission_per_trade: float = 1.0   # comisión fija por operación (entrada o salida)
+    trade_size: float = 1.0             # contratos/unidades por operación
+    slippage: float = 0.0               # slippage en puntos (se aplica en precio de entrada/salida)
 
     # Gestión de riesgo
-    sl_pct: float = 0.01
-    tp_pct: float = 0.02
-    max_bars_in_trade: int = 60
+    sl_pct: float = 0.01                # stop loss a -1%
+    tp_pct: float = 0.02                # take profit a +2%
+    max_bars_in_trade: int = 60         # duración máxima del trade en barras
 
-    # Parámetro de la estrategia de ejemplo
-    entry_threshold: float = 0.001
-
-    # Risk management avanzado
-    risk_per_trade_pct: float = 0.0
-    point_value: float = 1.0
-    margin_rate: float = 0.0
+    # Parámetros de la estrategia de ejemplo (para run_backtest_basic)
+    entry_threshold: float = 0.001      # 0.1% de subida respecto al cierre anterior para entrar
 
 
 @dataclass
@@ -59,11 +40,11 @@ class BacktestResult:
     """
     Resultado del backtest.
     """
-    equity: np.ndarray            # serie de equity
-    cash: float                   # efectivo final (cash interno del motor)
-    position: float               # posición final
-    trade_log: Dict[str, np.ndarray]  # arrays con info de los trades
-    extra: Dict[str, Any]         # parámetros y metadatos
+    equity: np.ndarray                  # serie de equity
+    cash: float                         # efectivo final
+    position: float                     # posición final
+    trade_log: Dict[str, np.ndarray]    # arrays con info de los trades
+    extra: Dict[str, Any]               # parámetros y metadatos
 
 
 # =====================
@@ -80,8 +61,8 @@ def _example_strategy_long_on_up_move(
     entry_threshold: float,
 ) -> np.ndarray:
     """
-    Estrategia de ejemplo: genera señales según el movimiento de la barra actual
-    respecto al cierre anterior.
+    Estrategia de ejemplo: genera señales según el movimiento de la barra
+    actual respecto al cierre anterior.
 
     Devuelve:
         +1 -> señal de compra
@@ -102,81 +83,14 @@ def _example_strategy_long_on_up_move(
             signals[i] = 1
         elif ret < -entry_threshold:
             signals[i] = -1
+        else:
+            signals[i] = 0
 
     return signals
 
 
 # =====================
-# Helpers numba-friendly
-# =====================
-
-@njit
-def _compute_position_size_long(
-    equity_before: float,
-    entry_price: float,
-    sl_pct: float,
-    trade_size: float,
-    risk_per_trade_pct: float,
-    point_value: float,
-) -> float:
-    """
-    Calcula el tamaño de la posición (solo largos) en función del riesgo
-    por trade. Si risk_per_trade_pct == 0.0, devuelve trade_size.
-    """
-    if risk_per_trade_pct <= 0.0 or sl_pct <= 0.0:
-        return trade_size
-
-    sl_price = entry_price * (1.0 - sl_pct)
-    price_diff = entry_price - sl_price  # > 0 si sl_pct > 0
-
-    if price_diff <= 0.0:
-        return trade_size
-
-    risk_capital = equity_before * risk_per_trade_pct
-    risk_per_unit = price_diff * point_value
-
-    if risk_per_unit <= 0.0:
-        return trade_size
-
-    qty = risk_capital / risk_per_unit
-    return qty
-
-
-@njit
-def _compute_position_size_short(
-    equity_before: float,
-    entry_price: float,
-    sl_pct: float,
-    trade_size: float,
-    risk_per_trade_pct: float,
-    point_value: float,
-) -> float:
-    """
-    Versión simétrica para cortos.
-    Si risk_per_trade_pct == 0.0, devuelve trade_size.
-    """
-    if risk_per_trade_pct <= 0.0 or sl_pct <= 0.0:
-        return trade_size
-
-    # Para cortos, SL por encima del precio de entrada
-    sl_price = entry_price * (1.0 + sl_pct)
-    price_diff = sl_price - entry_price
-
-    if price_diff <= 0.0:
-        return trade_size
-
-    risk_capital = equity_before * risk_per_trade_pct
-    risk_per_unit = price_diff * point_value
-
-    if risk_per_unit <= 0.0:
-        return trade_size
-
-    qty = risk_capital / risk_per_unit
-    return qty
-
-
-# =====================
-# Motor de backtest con SL/TP & duración (Numba)
+# Motor de backtest con SL/TP & duración (Numba) - Estrategia interna
 # =====================
 
 @njit
@@ -195,9 +109,6 @@ def _backtest_with_risk(
     sl_pct: float,
     tp_pct: float,
     max_bars_in_trade: int,
-    risk_per_trade_pct: float,
-    point_value: float,
-    margin_rate: float,
 ) -> Tuple[
     np.ndarray,  # equity
     float,       # cash final
@@ -214,16 +125,16 @@ def _backtest_with_risk(
 ]:
     """
     Motor de backtest con:
-      - Estrategia simple (_example_strategy_long_on_up_move).
-      - SL / TP en % desde precio de entrada.
-      - Máxima duración del trade.
-      - Registro de trades.
+    - Estrategia simple (_example_strategy_long_on_up_move).
+    - SL / TP en % desde precio de entrada.
+    - Máxima duración del trade.
+    - Registro de trades.
 
     exit_reason:
-      1 -> Stop Loss
-      2 -> Take Profit
-      3 -> Time Stop (duración máxima)
-      4 -> Señal contraria
+        1 -> Stop Loss
+        2 -> Take Profit
+        3 -> Time Stop (duración máxima)
+        4 -> Señal contraria
     """
     n = c.shape[0]
 
@@ -233,7 +144,7 @@ def _backtest_with_risk(
     entry_price = 0.0
     entry_bar_idx = -1
 
-    # Señales de la estrategia
+    # Señales de la estrategia interna
     signals = _example_strategy_long_on_up_move(o, h, l, c, v, entry_threshold)
 
     # Prealocación para el log de trades
@@ -251,7 +162,7 @@ def _backtest_with_risk(
     for i in range(n):
         price = c[i]
 
-        # --- Defensa: si el precio no es finito, saltamos la barra ---
+        # Defensa: si el precio no es finito, saltamos la barra
         if not np.isfinite(price):
             if i == 0:
                 equity[i] = initial_cash
@@ -259,28 +170,29 @@ def _backtest_with_risk(
                 equity[i] = equity[i - 1]
             continue
 
-        # -------------------------------------------------------------
         # 1) Comprobar SL / TP / max_bars antes de nuevas señales
         if position > 0.0:
             ret_from_entry = (price - entry_price) / entry_price
             bars_in_trade = i - entry_bar_idx
             reason = 0
 
-            if sl_pct > 0.0 and ret_from_entry <= -sl_pct:
+            if ret_from_entry <= -sl_pct:
                 reason = 1  # SL
-            elif tp_pct > 0.0 and ret_from_entry >= tp_pct:
+            elif ret_from_entry >= tp_pct:
                 reason = 2  # TP
             elif bars_in_trade >= max_bars_in_trade:
                 reason = 3  # Time stop
 
             if reason != 0:
-                # Cerrar posición (largo)
+                # Cerrar posición
                 trade_price = price - slippage
-                notional = trade_price * position * point_value
-                cash += notional
+                cash += trade_price * position
                 cash -= commission_per_trade
 
-                realized_pnl = (trade_price - entry_price) * position * point_value - commission_per_trade
+                realized_pnl = (
+                    (trade_price - entry_price) * position
+                    - commission_per_trade * 1.0
+                )
                 hold_bars = bars_in_trade
 
                 if trade_count < max_trades:
@@ -304,11 +216,13 @@ def _backtest_with_risk(
         # Señal de venta: cerrar por señal contraria
         if sig == -1 and position > 0.0:
             trade_price = price - slippage
-            notional = trade_price * position * point_value
-            cash += notional
+            cash += trade_price * position
             cash -= commission_per_trade
 
-            realized_pnl = (trade_price - entry_price) * position * point_value - commission_per_trade
+            realized_pnl = (
+                (trade_price - entry_price) * position
+                - commission_per_trade * 1.0
+            )
             hold_bars = i - entry_bar_idx
 
             if trade_count < max_trades:
@@ -326,44 +240,19 @@ def _backtest_with_risk(
             entry_price = 0.0
             entry_bar_idx = -1
 
-        # Señal de compra: abrir si no hay posición
+        # Señal de compra: abrir si no hay posición y hay cash suficiente
         if sig == 1 and position == 0.0:
-            entry_px = price + slippage
+            trade_price = price + slippage
+            cost = trade_price * trade_size + commission_per_trade
 
-            # Equity antes de abrir (no hay posición)
-            equity_before = cash  # como no hay posición, equity = cash
-
-            # Tamaño de la posición según el riesgo
-            qty = _compute_position_size_long(
-                equity_before=equity_before,
-                entry_price=entry_px,
-                sl_pct=sl_pct,
-                trade_size=trade_size,
-                risk_per_trade_pct=risk_per_trade_pct,
-                point_value=point_value,
-            )
-
-            if qty > 0.0:
-                notional = entry_px * qty * point_value
-
-                allow = True
-                if margin_rate > 0.0:
-                    margin_required = margin_rate * notional
-                    # Chequeo de margen: exigimos equity suficiente para cubrir margen + comisión
-                    if equity_before < margin_required + commission_per_trade:
-                        allow = False
-
-                if allow:
-                    # Abrir largo (contabilidad simple: restamos nominal y comisión)
-                    cash -= notional
-                    cash -= commission_per_trade
-
-                    position = qty
-                    entry_price = entry_px
-                    entry_bar_idx = i
+            if cash >= cost:
+                cash -= cost
+                position = trade_size
+                entry_price = trade_price
+                entry_bar_idx = i
 
         # 3) Mark-to-market de la equity
-        equity[i] = cash + position * price * point_value
+        equity[i] = cash + position * price
 
     return (
         equity,
@@ -382,7 +271,7 @@ def _backtest_with_risk(
 
 
 # =====================
-# Interfaz de alto nivel (Python) para la estrategia de ejemplo
+# Interfaz de alto nivel (Python) - Estrategia interna
 # =====================
 
 def run_backtest_basic(
@@ -391,10 +280,10 @@ def run_backtest_basic(
 ) -> BacktestResult:
     """
     Ejecuta un backtest con:
-      - Estrategia de ejemplo basada en momentum.
-      - SL / TP en %.
-      - Máxima duración del trade.
-      - Log de trades completo.
+    - Estrategia de ejemplo basada en momentum.
+    - SL / TP en %.
+    - Máxima duración del trade.
+    - Log de trades completo.
     """
     if config is None:
         config = BacktestConfig()
@@ -427,9 +316,6 @@ def run_backtest_basic(
         sl_pct=config.sl_pct,
         tp_pct=config.tp_pct,
         max_bars_in_trade=config.max_bars_in_trade,
-        risk_per_trade_pct=config.risk_per_trade_pct,
-        point_value=config.point_value,
-        margin_rate=config.margin_rate,
     )
 
     trade_log: Dict[str, np.ndarray] = {}
@@ -454,9 +340,6 @@ def run_backtest_basic(
         "tp_pct": config.tp_pct,
         "max_bars_in_trade": config.max_bars_in_trade,
         "entry_threshold": config.entry_threshold,
-        "risk_per_trade_pct": config.risk_per_trade_pct,
-        "point_value": config.point_value,
-        "margin_rate": config.margin_rate,
         "n_trades": trade_count,
     }
 
@@ -489,9 +372,6 @@ def _backtest_with_risk_from_signals(
     sl_pct: float,
     tp_pct: float,
     max_bars_in_trade: int,
-    risk_per_trade_pct: float,
-    point_value: float,
-    margin_rate: float,
 ) -> Tuple[
     np.ndarray,  # equity
     float,       # cash final
@@ -510,16 +390,16 @@ def _backtest_with_risk_from_signals(
     Igual que _backtest_with_risk, pero usando un array de señales externo.
 
     Parámetros clave:
-      - signals: array int8 del mismo tamaño que c:
-          +1 -> señal de compra/entrada larga
-          -1 -> señal de cierre (o entrada corta, no usada aquí)
-           0 -> nada
+        signals: array int8 del mismo tamaño que c:
+            +1 -> señal de compra/entrada larga
+            -1 -> cierre por señal contraria
+             0 -> nada
 
     exit_reason:
-      1 -> Stop Loss
-      2 -> Take Profit
-      3 -> Time Stop (duración máxima)
-      4 -> Señal contraria
+        1 -> Stop Loss
+        2 -> Take Profit
+        3 -> Time Stop (duración máxima)
+        4 -> Señal contraria
     """
     n = c.shape[0]
 
@@ -544,7 +424,7 @@ def _backtest_with_risk_from_signals(
     for i in range(n):
         price = c[i]
 
-        # --- Defensa: si el precio no es finito, saltamos la barra ---
+        # Defensa: si el precio no es finito, saltamos la barra
         if not np.isfinite(price):
             if i == 0:
                 equity[i] = initial_cash
@@ -552,38 +432,29 @@ def _backtest_with_risk_from_signals(
                 equity[i] = equity[i - 1]
             continue
 
-        # -------------------------------------------------------------
         # 1) Comprobar SL / TP / max_bars antes de nuevas señales
-        if position != 0.0:
-            if position > 0.0:
-                # Largo
-                ret_from_entry = (price - entry_price) / entry_price
-            else:
-                # Corto (por si en el futuro lo usamos)
-                ret_from_entry = (entry_price - price) / entry_price
-
+        if position > 0.0:
+            ret_from_entry = (price - entry_price) / entry_price
             bars_in_trade = i - entry_bar_idx
             reason = 0
 
-            if sl_pct > 0.0 and ret_from_entry <= -sl_pct:
+            if ret_from_entry <= -sl_pct:
                 reason = 1  # SL
-            elif tp_pct > 0.0 and ret_from_entry >= tp_pct:
+            elif ret_from_entry >= tp_pct:
                 reason = 2  # TP
             elif bars_in_trade >= max_bars_in_trade:
                 reason = 3  # Time stop
 
             if reason != 0:
                 # Cerrar posición
-                if position > 0.0:
-                    trade_price = price - slippage
-                else:
-                    trade_price = price + slippage
-
-                notional = trade_price * position * point_value
-                cash += notional
+                trade_price = price - slippage
+                cash += trade_price * position
                 cash -= commission_per_trade
 
-                realized_pnl = (trade_price - entry_price) * position * point_value - commission_per_trade
+                realized_pnl = (
+                    (trade_price - entry_price) * position
+                    - commission_per_trade * 1.0
+                )
                 hold_bars = bars_in_trade
 
                 if trade_count < max_trades:
@@ -601,21 +472,19 @@ def _backtest_with_risk_from_signals(
                 entry_price = 0.0
                 entry_bar_idx = -1
 
-        # 2) Procesar señal de la estrategia (compra/venta)
+        # 2) Procesar señal externa
         sig = signals[i]
 
-        # Señal de cierre por señal contraria
-        if sig == -1 and position != 0.0:
-            if position > 0.0:
-                trade_price = price - slippage
-            else:
-                trade_price = price + slippage
-
-            notional = trade_price * position * point_value
-            cash += notional
+        # Señal de venta: cerrar por señal contraria
+        if sig == -1 and position > 0.0:
+            trade_price = price - slippage
+            cash += trade_price * position
             cash -= commission_per_trade
 
-            realized_pnl = (trade_price - entry_price) * position * point_value - commission_per_trade
+            realized_pnl = (
+                (trade_price - entry_price) * position
+                - commission_per_trade * 1.0
+            )
             hold_bars = i - entry_bar_idx
 
             if trade_count < max_trades:
@@ -632,3 +501,121 @@ def _backtest_with_risk_from_signals(
             position = 0.0
             entry_price = 0.0
             entry_bar_idx = -1
+
+        # Señal de compra: abrir posición si estamos flat Y hay cash suficiente
+        if sig == 1 and position == 0.0:
+            trade_price = price + slippage
+            cost = trade_price * trade_size + commission_per_trade
+
+            if cash >= cost:
+                cash -= cost
+                position = trade_size
+                entry_price = trade_price
+                entry_bar_idx = i
+
+        # 3) Mark-to-market de la equity
+        equity[i] = cash + position * price
+
+    return (
+        equity,
+        cash,
+        position,
+        trade_count,
+        trade_entry_idx,
+        trade_exit_idx,
+        trade_entry_price,
+        trade_exit_price,
+        trade_qty,
+        trade_pnl,
+        trade_holding_bars,
+        trade_exit_reason,
+    )
+
+
+# =====================
+# Interfaz de alto nivel usando señales externas
+# =====================
+
+def run_backtest_with_signals(
+    data: OHLCVArrays,
+    signals: np.ndarray,
+    config: BacktestConfig | None = None,
+) -> BacktestResult:
+    """
+    Ejecuta un backtest usando un array de señales externo (int8: -1, 0, +1).
+
+    Es igual que run_backtest_basic, pero:
+    - No calcula la estrategia dentro del motor.
+    - Usa las señales proporcionadas.
+    """
+    if config is None:
+        config = BacktestConfig()
+
+    if signals.shape[0] != data.c.shape[0]:
+        raise ValueError(
+            f"El tamaño de signals ({signals.shape[0]}) no coincide "
+            f"con el número de barras ({data.c.shape[0]})."
+        )
+
+    (
+        equity,
+        cash,
+        position,
+        trade_count,
+        trade_entry_idx,
+        trade_exit_idx,
+        trade_entry_price,
+        trade_exit_price,
+        trade_qty,
+        trade_pnl,
+        trade_holding_bars,
+        trade_exit_reason,
+    ) = _backtest_with_risk_from_signals(
+        ts=data.ts,
+        o=data.o,
+        h=data.h,
+        l=data.l,
+        c=data.c,
+        v=data.v,
+        signals=signals.astype(np.int8),
+        initial_cash=config.initial_cash,
+        commission_per_trade=config.commission_per_trade,
+        trade_size=config.trade_size,
+        slippage=config.slippage,
+        sl_pct=config.sl_pct,
+        tp_pct=config.tp_pct,
+        max_bars_in_trade=config.max_bars_in_trade,
+    )
+
+    trade_log: Dict[str, np.ndarray] = {}
+    if trade_count > 0:
+        trade_log = {
+            "entry_idx": trade_entry_idx[:trade_count],
+            "exit_idx": trade_exit_idx[:trade_count],
+            "entry_price": trade_entry_price[:trade_count],
+            "exit_price": trade_exit_price[:trade_count],
+            "qty": trade_qty[:trade_count],
+            "pnl": trade_pnl[:trade_count],
+            "holding_bars": trade_holding_bars[:trade_count],
+            "exit_reason": trade_exit_reason[:trade_count],
+        }
+
+    extra: Dict[str, Any] = {
+        "initial_cash": config.initial_cash,
+        "commission_per_trade": config.commission_per_trade,
+        "trade_size": config.trade_size,
+        "slippage": config.slippage,
+        "sl_pct": config.sl_pct,
+        "tp_pct": config.tp_pct,
+        "max_bars_in_trade": config.max_bars_in_trade,
+        "entry_threshold": config.entry_threshold,
+        "n_trades": trade_count,
+    }
+
+    return BacktestResult(
+        equity=equity,
+        cash=cash,
+        position=position,
+        trade_log=trade_log,
+        extra=extra,
+    )
