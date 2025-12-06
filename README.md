@@ -1,7 +1,20 @@
 # Backtesting Engine — High-Performance Intraday Backtesting Framework
 
-This project implements a **fast, modular, and reproducible backtesting engine** designed for **intraday algorithmic trading research**.  
-It is built around a full data pipeline (Darwinex BID/ASK → parquet → OHLCV → NPZ) and a **Numba-accelerated backtesting core**, allowing realistic simulations with dynamic SL/TP, execution constraints, and strategy-driven signals.
+
+This project is a **high-performance intraday backtesting engine** built in **Python** and accelerated with **Numba**, designed to process **Darwinex BID/ASK market data** (currently focused on the *NDXm* index) and evaluate algorithmic trading strategies under realistic execution constraints.
+
+It provides a **complete end-to-end data pipeline**—from raw Darwinex tick logs to aggregated 1-minute OHLCV bars, NumPy-optimized NPZ files, and finally a fully vectorized backtesting engine capable of handling thousands of trades efficiently.  
+The framework includes:
+
+- A robust **Darwinex data ingestion and cleaning pipeline**
+- **1-minute bar generation** and NPZ conversion for ultra-fast backtests
+- A **Numba-accelerated backtesting core** supporting SL/TP, max-duration rules, commission, slippage, and position sizing
+- A modular **strategy layer** with an example “Opening Sweep / Liquidity Grab” strategy
+- Comprehensive **reporting modules**: equity curves, performance metrics, trade analytics, and export to Excel/JSON
+- Visualization tools for **best/worst trades**, equity curve plotting, and trade distributions
+
+The goal of the framework is to serve as a **research-ready, production-oriented foundation** for exploring intraday pattern-based strategies—especially those relying on liquidity events (e.g., morning or afternoon opening sweeps) and high-volume reversal behavior that may be suitable for DARWIN-style systematic trading approaches.
+
 
 ---
 
