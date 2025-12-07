@@ -103,8 +103,8 @@ def _plot_single_trade(
             "close": c,
         }
     )
-    # Evitar FutureWarning: convertimos explícitamente a np.array
-    df["mdates"] = mdates.date2num(np.array(df["timestamp"].dt.to_pydatetime()))
+    # Evitar FutureWarning: convertimos la serie a numpy datetime64 directamente
+    df["mdates"] = mdates.date2num(df["timestamp"].to_numpy())
 
     if candlestick_ohlc is None:
         # fallback sencillo: pseudo-velas
