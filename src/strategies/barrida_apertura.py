@@ -28,8 +28,13 @@ class BarridaParams:
     volume_percentile: float = 80.0
     use_two_bearish_bars: bool = True
 
-    # Ventanas horarias (hora local del activo) donde buscamos el patrón
-    session_open_times: Tuple[str, ...] = ("09:00", "15:00")
+    # Ventanas horarias (hora local) donde la estrategia puede operar.
+    # Por defecto se limita a las sesiones de Madrid 08:50-10:00 y 15:20-16:30.
+    trading_windows_local: Tuple[Tuple[str, str], ...] = (
+        ("08:50", "10:00"),
+        ("15:20", "16:30"),
+    )
+    trading_timezone: str = "Europe/Madrid"
     pre_open_minutes: int = 5
     post_open_minutes: int = 60
 
@@ -49,7 +54,8 @@ class StrategyBarridaApertura:
     """
     Estrategia de "barrida" en aperturas:
 
-      1) Ventanas alrededor de las aperturas definidas (09:00 y 15:00).
+      1) Ventanas horarias locales (por defecto 08:50-10:00 y 15:20-16:30
+         de Madrid, con ajuste automático de horario de verano).
       2) Busca 2 velas bajistas consecutivas con volumen alto.
       3) En la barra siguiente, si hay reversal (vela alcista) y
          la subida es suficientemente fuerte vs ATR, genera señal de entrada.
@@ -108,20 +114,21 @@ class StrategyBarridaApertura:
 
     def _build_session_mask(self, ts: np.ndarray) -> np.ndarray:
         """
-        Devuelve un array booleano con True en las barras que están
-        dentro de las ventanas [open - pre_open_minutes, open + post_open_minutes]
-        para cada hora de apertura configurada.
+        Devuelve un array booleano con True en las barras que están dentro
+        de las ventanas horarias locales configuradas, convirtiendo los
+        timestamps (en UTC) a la zona horaria de trabajo.
         """
-        idx = pd.to_datetime(ts)
-        minutes_in_day = idx.hour * 60 + idx.minute
+        # Localizamos en UTC y convertimos a la zona objetivo para respetar el DST.
+        idx_local = pd.to_datetime(ts, utc=True).tz_convert(self.params.trading_timezone)
+        minutes_in_day = idx_local.hour * 60 + idx_local.minute
         mask = np.zeros(len(ts), dtype=bool)
 
-        for t_str in self.params.session_open_times:
-            hour_str, minute_str = t_str.split(":")
-            open_min = int(hour_str) * 60 + int(minute_str)
+        for start_str, end_str in self.params.trading_windows_local:
+            start_hour, start_minute = start_str.split(":")
+            end_hour, end_minute = end_str.split(":")
 
-            start = open_min - self.params.pre_open_minutes
-            end = open_min + self.params.post_open_minutes
+            start = int(start_hour) * 60 + int(start_minute)
+            end = int(end_hour) * 60 + int(end_minute)
 
             mask |= (minutes_in_day >= start) & (minutes_in_day <= end)
 
@@ -226,7 +233,8 @@ class StrategyBarridaApertura:
             "confirm_reversal": bool(params.confirm_reversal),
             "panic_lookback": int(params.panic_lookback),
             "panic_threshold": float(params.panic_threshold),
-            "session_open_times": params.session_open_times,
+            "trading_windows_local": params.trading_windows_local,
+            "trading_timezone": params.trading_timezone,
             "pre_open_minutes": int(params.pre_open_minutes),
             "post_open_minutes": int(params.post_open_minutes),
             "atr_period": int(params.atr_period),
