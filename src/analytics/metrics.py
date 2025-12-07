@@ -89,7 +89,7 @@ def equity_curve_metrics(equity: pd.Series) -> Dict[str, Any]:
 
     # --- Var mensual histórica aproximada (95%) ---
     # Proyección muy simple: coger retornos mensuales de equity
-    eq_monthly = equity.resample("M").last().dropna()
+    eq_monthly = equity.resample("ME").last().dropna()
     monthly_returns = eq_monthly.pct_change().dropna()
 
     if len(monthly_returns) > 0:

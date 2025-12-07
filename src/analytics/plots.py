@@ -53,7 +53,7 @@ def plot_trades_per_month(
     s = pd.Series(1, index=trades_df["entry_time"])
 
     # Recuento mensual
-    trades_per_month = s.resample("M").sum()
+    trades_per_month = s.resample("ME").sum()
 
     ax.bar(trades_per_month.index, trades_per_month.values)
     ax.set_title("Número de trades por mes")
