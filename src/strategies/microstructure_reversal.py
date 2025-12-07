@@ -34,19 +34,25 @@ class MicrostructureParams:
     shift_body_atr: float = 0.6
     structure_break_lookback: int = 3
 
+    volume_period: int = 20
+    min_rvol: float = 1.0
+
+    atr_stop_mult: float = 0.8
+    atr_tp_mult: float = 1.2
+    max_holding_bars: int = 15
+
 
 class StrategyMicrostructureReversal:
     """
-    Estrategia long-only inspirada en barridas rápidas y reversión de
-    microestructura:
+    Estrategia de reversión por microestructura (versión 2.0).
 
-    1) Contexto: tendencia alcista (precio > EMA50, EMA20 > EMA50, EMA50 ascendente).
-    2) Pullback rápido: caída de 0.4–1.1 ATR en ≤8 velas desde el máximo reciente.
-    3) Exhaustion bar: nueva mecha mínima, cuerpo pequeño, cierre en la mitad superior
-       y sin incremento de volumen.
-    4) Bullish shift candle: vela verde amplia (>0.6 ATR), cierra sobre el máximo
-       previo y rompe la microestructura (nuevo máximo vs últimas 3 velas).
-    5) Entrada en el cierre de la vela de shift.
+    Flujo general:
+      1) Filtro de tendencia fuerte vía EMAs.
+      2) Pullback en ATR dentro de una ventana máxima.
+      3) Vela de agotamiento (cuerpo pequeño, cierre en zona media de rango).
+      4) Vela de shift a favor de la tendencia que rompe estructura.
+      5) Filtro de actividad por volumen relativo.
+      6) SL / TP basados en ATR + límite de barras en el trade.
     """
 
     def __init__(self, **kwargs: Any) -> None:
@@ -85,34 +91,12 @@ class StrategyMicrostructureReversal:
         return atr
 
     @staticmethod
-    def _pullback_features(
-        h: np.ndarray,
-        l: np.ndarray,
-        atr: np.ndarray,
-        lookback: int,
-    ) -> Dict[str, np.ndarray]:
-        n = len(h)
-        drop_atr = np.full(n, np.nan, dtype=float)
-        bars_since_high = np.full(n, -1, dtype=int)
-        ref_high = np.full(n, np.nan, dtype=float)
+    def _rolling_max(arr: np.ndarray, window: int) -> np.ndarray:
+        return pd.Series(arr).rolling(window, min_periods=1).max().to_numpy()
 
-        for i in range(n):
-            start = max(0, i - lookback + 1)
-            window_high = h[start : i + 1]
-            local_idx = int(np.argmax(window_high))
-            peak_idx = start + local_idx
-
-            bars_since_high[i] = i - peak_idx
-            ref_high[i] = window_high[local_idx]
-
-            if atr[i] > 0:
-                drop_atr[i] = (ref_high[i] - l[i]) / atr[i]
-
-        return {
-            "drop_atr": drop_atr,
-            "bars_since_high": bars_since_high,
-            "ref_high": ref_high,
-        }
+    @staticmethod
+    def _rolling_min(arr: np.ndarray, window: int) -> np.ndarray:
+        return pd.Series(arr).rolling(window, min_periods=1).min().to_numpy()
 
     # ---------------------------------------------------------
     # API principal
@@ -130,84 +114,129 @@ class StrategyMicrostructureReversal:
 
         p = self.params
 
-        # 1) Contexto de tendencia
+        # 1) Tendencia
         ema_short = self._ema(c, p.ema_short)
         ema_long = self._ema(c, p.ema_long)
+        uptrend_mask = ema_short > ema_long
+        downtrend_mask = ema_short < ema_long
 
-        ema_long_slope = np.zeros(n, dtype=bool)
-        if n > 1:
-            ema_long_slope[1:] = ema_long[1:] > ema_long[:-1]
-
-        trend_mask = (c > ema_long) & (ema_short > ema_long) & ema_long_slope
-
-        # 2) ATR y características de pullback
+        # 2) ATR
         atr = self._atr(h=h, l=l, c=c, period=p.atr_period)
-        pullback = self._pullback_features(h=h, l=l, atr=atr, lookback=p.max_pullback_bars)
 
-        pullback_mask = (
-            (pullback["bars_since_high"] >= 1)
-            & (pullback["bars_since_high"] <= p.max_pullback_bars)
-            & (pullback["drop_atr"] >= p.min_pullback_atr)
-            & (pullback["drop_atr"] <= p.max_pullback_atr)
-            & (c < pullback["ref_high"])
+        # 3) Pullback en ATR
+        swing_high = self._rolling_max(h, p.max_pullback_bars)
+        swing_low = self._rolling_min(l, p.max_pullback_bars)
+
+        with np.errstate(divide="ignore", invalid="ignore"):
+            pullback_atr_long = (swing_high - c) / atr
+            pullback_atr_short = (c - swing_low) / atr
+
+        pullback_mask_long = (
+            np.isfinite(pullback_atr_long)
+            & (pullback_atr_long >= p.min_pullback_atr)
+            & (pullback_atr_long <= p.max_pullback_atr)
+            & (swing_high > c)
+        )
+        pullback_mask_short = (
+            np.isfinite(pullback_atr_short)
+            & (pullback_atr_short >= p.min_pullback_atr)
+            & (pullback_atr_short <= p.max_pullback_atr)
+            & (swing_low < c)
         )
 
-        # 3) Exhaustion bar (vela previa a la señal)
+        # 4) Exhaustion candle (vela previa al shift)
         range_ = h - l
         body = np.abs(c - o)
-        with np.errstate(divide="ignore", invalid="ignore"):
-            close_pos = np.where(range_ > 0, (c - l) / range_, 0.5)
-            body_ratio = np.where(range_ > 0, body / range_, 0.0)
+        tiny = 1e-12
+        close_pos_from_low = (c - l) / np.maximum(range_, tiny)
+        close_pos_from_high = (h - c) / np.maximum(range_, tiny)
+        body_ratio = body / np.maximum(range_, tiny)
 
-        prev_vol = np.roll(v, 1)
-        prev_vol[0] = v[0]
-
-        prev_low = np.roll(l, 1)
-        prev_low[0] = l[0]
-
-        exhaustion_mask = (
-            (l < prev_low)
-            & (close_pos >= p.exhaustion_close_min)
-            & (close_pos <= p.exhaustion_close_max)
+        exhaustion_long = (
+            (c < o)
+            & (close_pos_from_low >= p.exhaustion_close_min)
+            & (close_pos_from_low <= p.exhaustion_close_max)
             & (body_ratio <= p.exhaustion_body_max_ratio)
-            & (v <= prev_vol)
+        )
+        exhaustion_short = (
+            (c > o)
+            & (close_pos_from_high >= p.exhaustion_close_min)
+            & (close_pos_from_high <= p.exhaustion_close_max)
+            & (body_ratio <= p.exhaustion_body_max_ratio)
         )
 
-        # 4) Bullish shift candle
-        prev_high = np.roll(h, 1)
-        prev_high[0] = h[0]
+        exhaustion_long &= pullback_mask_long & uptrend_mask
+        exhaustion_short &= pullback_mask_short & downtrend_mask
 
-        shift_body = c - o
-        shift_mask = (
-            (shift_body > 0)
-            & (atr > 0)
-            & (shift_body >= p.shift_body_atr * atr)
-            & (c > prev_high)
-        )
+        # 5) Shift + ruptura de estructura en la vela actual
+        body_signed = c - o
+        shift_long = (body_signed > 0) & (body >= p.shift_body_atr * atr)
+        shift_short = (body_signed < 0) & (body >= p.shift_body_atr * atr)
 
-        # 5) Ruptura de microestructura
-        roll_max_prev = pd.Series(h).rolling(p.structure_break_lookback, min_periods=1).max().shift(1)
-        roll_max_prev = roll_max_prev.to_numpy()
-        structure_break = h > roll_max_prev
+        prev_max_high = pd.Series(h).rolling(p.structure_break_lookback, min_periods=1).max().shift(1)
+        prev_min_low = pd.Series(l).rolling(p.structure_break_lookback, min_periods=1).min().shift(1)
+        prev_max_high.iloc[0] = h[0]
+        prev_min_low.iloc[0] = l[0]
 
-        # 6) Entradas: vela actual debe ser shift + romper estructura;
-        # la vela previa debe ser exhaustion dentro de un pullback válido y bajo tendencia alcista.
-        prev_exhaustion = np.roll(exhaustion_mask & pullback_mask & trend_mask, 1)
-        prev_exhaustion[0] = False
+        structure_break_long = c > prev_max_high.to_numpy()
+        structure_break_short = c < prev_min_low.to_numpy()
 
-        entries_mask = shift_mask & structure_break & prev_exhaustion & trend_mask
+        shift_long &= structure_break_long & uptrend_mask
+        shift_short &= structure_break_short & downtrend_mask
+
+        # 6) Filtro de actividad por volumen
+        vol_mean = pd.Series(v).rolling(p.volume_period, min_periods=1).mean().to_numpy()
+        with np.errstate(divide="ignore", invalid="ignore"):
+            rvol = np.divide(v, vol_mean, out=np.ones_like(v, dtype=float), where=vol_mean > 0)
+        high_activity_mask = rvol >= p.min_rvol
+
+        # 7) Entradas: vela previa agotamiento, vela actual shift + ruptura + volumen
+        prev_exhaustion_long = np.roll(exhaustion_long, 1)
+        prev_exhaustion_long[0] = False
+        prev_exhaustion_short = np.roll(exhaustion_short, 1)
+        prev_exhaustion_short[0] = False
+
+        entries_long = shift_long & prev_exhaustion_long & high_activity_mask
+        entries_short = shift_short & prev_exhaustion_short & high_activity_mask
 
         signals = np.zeros(n, dtype=np.int8)
-        signals[entries_mask] = 1
+        signals[entries_long] = 1
+        signals[entries_short] = -1
 
-        meta: Dict[str, Any] = {
-            "n_entries": int(entries_mask.sum()),
-            "trend_mask": trend_mask,
-            "pullback_mask": pullback_mask,
-            "exhaustion_mask": exhaustion_mask,
-            "shift_mask": shift_mask,
-            "structure_break": structure_break,
-            "params": p,
+        # 8) SL / TP / duración
+        initial_stop_loss = np.full(n, np.nan, dtype=float)
+        take_profit = np.full(n, np.nan, dtype=float)
+        time_stop_bars = np.zeros(n, dtype=int)
+
+        atr_entry = atr
+        initial_stop_loss[entries_long] = c[entries_long] - p.atr_stop_mult * atr_entry[entries_long]
+        take_profit[entries_long] = c[entries_long] + p.atr_tp_mult * atr_entry[entries_long]
+
+        initial_stop_loss[entries_short] = c[entries_short] + p.atr_stop_mult * atr_entry[entries_short]
+        take_profit[entries_short] = c[entries_short] - p.atr_tp_mult * atr_entry[entries_short]
+
+        time_stop_bars[entries_long | entries_short] = p.max_holding_bars
+
+        meta_summary: Dict[str, Any] = {
+            "params": asdict(p),
+            "n_entries_long": int(entries_long.sum()),
+            "n_entries_short": int(entries_short.sum()),
+            "uptrend_mask": uptrend_mask.tolist(),
+            "downtrend_mask": downtrend_mask.tolist(),
+            "pullback_mask_long": pullback_mask_long.tolist(),
+            "pullback_mask_short": pullback_mask_short.tolist(),
+            "exhaustion_mask_long": exhaustion_long.tolist(),
+            "exhaustion_mask_short": exhaustion_short.tolist(),
+            "shift_mask_long": shift_long.tolist(),
+            "shift_mask_short": shift_short.tolist(),
+            "structure_break_long": structure_break_long.tolist(),
+            "structure_break_short": structure_break_short.tolist(),
+            "high_activity_mask": high_activity_mask.tolist(),
+            "entries_long": entries_long.tolist(),
+            "entries_short": entries_short.tolist(),
+            "initial_stop_loss": initial_stop_loss.tolist(),
+            "take_profit": take_profit.tolist(),
+            "time_stop_bars": time_stop_bars.tolist(),
         }
 
-        return StrategyResult(signals=signals, meta=meta)
+        return StrategyResult(signals=signals, meta=meta_summary)
