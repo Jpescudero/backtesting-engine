@@ -41,6 +41,9 @@ class BacktestRunConfig:
     generate_trade_plots: bool = True
     headless: bool = False
     reports_dir: Optional[Path] = None
+    train_years: Optional[list[int]] = None
+    test_years: Optional[list[int]] = None
+    use_test_years: bool = False
     strategy_params: StrategyParams = field(default_factory=StrategyParams)
     backtest_config: BacktestConfig = field(
         default_factory=lambda: BacktestConfig(
@@ -84,7 +87,17 @@ def run_single_backtest(config: BacktestRunConfig) -> BacktestArtifacts:
 
     with timed_step(timings, "02_carga_feed_npz"):
         feed = NPZOHLCVFeed(symbol=config.symbol, timeframe=config.timeframe)
-        data = feed.load_all()
+        if config.use_test_years and not config.test_years:
+            raise ValueError("'use_test_years' está a True pero no se han definido test_years")
+
+        if config.use_test_years and config.test_years:
+            data = feed.load_years(config.test_years)
+            logger.info("Usando años de prueba: %s", config.test_years)
+        elif config.train_years:
+            data = feed.load_years(config.train_years)
+            logger.info("Usando años de entrenamiento: %s", config.train_years)
+        else:
+            data = feed.load_all()
 
     with timed_step(timings, "03_generar_senales_estrategia"):
         strategy = StrategyBarridaApertura(

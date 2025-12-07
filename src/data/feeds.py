@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import List, Optional
+from typing import List, Optional, Sequence, Tuple
 
 import numpy as np
 
@@ -57,6 +57,41 @@ def _concat_ohlcv_arrays(arrays_list: List[OHLCVArrays]) -> OHLCVArrays:
     v = np.concatenate([a.v for a in arrays_list])
 
     return OHLCVArrays(ts=ts, o=o, h=h, l=l, c=c, v=v)
+
+
+def filter_ohlcv_by_years(data: OHLCVArrays, years: Sequence[int]) -> OHLCVArrays:
+    """
+    Filtra un OHLCVArrays quedándose sólo con las barras de los años indicados.
+    """
+    if not years:
+        raise ValueError("Debe proporcionarse al menos un año para filtrar los datos")
+
+    ts_years = data.ts.astype("datetime64[Y]").astype(np.int64) + 1970
+    target_years = np.array(list(years), dtype=np.int64)
+    mask = np.isin(ts_years, target_years)
+
+    if not mask.any():
+        raise ValueError(f"No hay barras para los años especificados: {years}")
+
+    return OHLCVArrays(
+        ts=data.ts[mask],
+        o=data.o[mask],
+        h=data.h[mask],
+        l=data.l[mask],
+        c=data.c[mask],
+        v=data.v[mask],
+    )
+
+
+def split_ohlcv_train_test(
+    data: OHLCVArrays, train_years: Sequence[int], test_years: Sequence[int]
+) -> Tuple[OHLCVArrays, OHLCVArrays]:
+    """
+    Genera un split train/test por años sin duplicar la carga de datos.
+    """
+    train = filter_ohlcv_by_years(data, train_years)
+    test = filter_ohlcv_by_years(data, test_years)
+    return train, test
 
 
 class NPZOHLCVFeed:
@@ -119,6 +154,22 @@ class NPZOHLCVFeed:
 
         print(f"[feeds] Concatenando {len(files)} archivos NPZ para {self.symbol} ({self.timeframe})")
         return _concat_ohlcv_arrays(arrays_list)
+
+    def load_years(self, years: Sequence[int]) -> OHLCVArrays:
+        """
+        Carga únicamente las barras pertenecientes a los años indicados.
+        """
+        all_data = self.load_all()
+        return filter_ohlcv_by_years(all_data, years)
+
+    def load_train_test(
+        self, train_years: Sequence[int], test_years: Sequence[int]
+    ) -> Tuple[OHLCVArrays, OHLCVArrays]:
+        """
+        Devuelve una tupla (train, test) filtrada por años.
+        """
+        all_data = self.load_all()
+        return split_ohlcv_train_test(all_data, train_years, test_years)
 
 
 if __name__ == "__main__":
