@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Dict, Optional
 
 import matplotlib
+import numpy as np
 
 from src.analytics.reporting import equity_to_series, trades_to_dataframe
 from src.config.paths import REPORTS_DIR
@@ -59,9 +60,15 @@ class BacktestRunConfig:
             initial_cash=100_000.0,
             commission_per_trade=1.0,
             trade_size=1.0,
+            min_trade_size=0.01,
+            max_trade_size=100.0,
+            risk_per_trade_pct=0.0025,
+            atr_stop_mult=1.0,
+            atr_tp_mult=2.0,
             slippage=0.0,
             sl_pct=0.01,
             tp_pct=0.02,
+            point_value=1.0,
             max_bars_in_trade=60,
             entry_threshold=0.0,
         )
@@ -134,7 +141,16 @@ def run_single_backtest(config: BacktestRunConfig) -> BacktestArtifacts:
     logger.info("Estrategia Microstructure Reversal: %s señales generadas", n_signals)
 
     with timed_step(timings, "04_backtest_motor"):
-        result = run_backtest_with_signals(data, strat_res.signals, config=config.backtest_config)
+        atr_array = None
+        if "atr" in strat_res.meta:
+            atr_array = np.asarray(strat_res.meta["atr"], dtype=float)
+
+        result = run_backtest_with_signals(
+            data,
+            strat_res.signals,
+            atr=atr_array,
+            config=config.backtest_config,
+        )
     logger.info(
         "Cash final: %s | Posición final: %s | Número de trades: %s",
         result.cash,

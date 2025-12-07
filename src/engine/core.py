@@ -24,11 +24,16 @@ class BacktestConfig:
     commission_per_trade: float = 1.0   # comisión fija por operación (entrada o salida)
     trade_size: float = 1.0             # contratos/unidades por operación
     min_trade_size: float = 0.01        # tamaño mínimo permitido por contrato/lote
+    max_trade_size: float = 1000.0      # límite superior para el tamaño por operación
     slippage: float = 0.0               # slippage en puntos
 
     # Gestión de riesgo
     sl_pct: float = 0.01                # stop loss a -1%
     tp_pct: float = 0.02                # take profit a +2%
+    risk_per_trade_pct: float = 0.0     # riesgo fijo por trade (0.0025 => 0.25%)
+    atr_stop_mult: float = 0.0          # múltiplo de ATR para calcular el SL
+    atr_tp_mult: float = 0.0            # múltiplo de ATR para calcular el TP
+    point_value: float = 1.0            # valor monetario de 1 punto para 1.0 contrato
     max_bars_in_trade: int = 60         # duración máxima del trade en barras
 
     # Parámetros de la estrategia de ejemplo
@@ -110,6 +115,61 @@ def _calculate_affordable_qty(
         return 0.0
 
     return max_units if max_units < desired_qty else desired_qty
+
+
+@njit
+def _round_to_step(value: float, step: float) -> float:
+    if step <= 0.0:
+        return value
+    return np.round(value / step) * step
+
+
+@njit
+def _clip_size(value: float, min_trade_size: float, max_trade_size: float) -> float:
+    if value < min_trade_size:
+        return 0.0
+    if max_trade_size > 0.0 and value > max_trade_size:
+        return max_trade_size
+    return value
+
+
+@njit
+def _compute_risk_based_qty(
+    equity: float,
+    atr_value: float,
+    atr_stop_mult: float,
+    point_value: float,
+    risk_per_trade_pct: float,
+    min_trade_size: float,
+    max_trade_size: float,
+) -> float:
+    """
+    Tamaño de posición ajustado a la volatilidad:
+
+    lotes = (equity * risk_per_trade_pct) / (atr_stop_mult * ATR * point_value)
+
+    Se redondea al múltiplo de min_trade_size más cercano y se recorta con un
+    máximo opcional.
+    """
+    if (
+        equity <= 0.0
+        or atr_value <= 0.0
+        or atr_stop_mult <= 0.0
+        or point_value <= 0.0
+        or risk_per_trade_pct <= 0.0
+    ):
+        return 0.0
+
+    stop_distance = atr_stop_mult * atr_value
+    loss_per_unit = stop_distance * point_value
+
+    if loss_per_unit <= 0.0:
+        return 0.0
+
+    theoretical_qty = (equity * risk_per_trade_pct) / loss_per_unit
+    rounded_qty = _round_to_step(theoretical_qty, min_trade_size)
+
+    return _clip_size(rounded_qty, min_trade_size, max_trade_size)
 
 
 # =====================
@@ -365,9 +425,14 @@ def run_backtest_basic(
         "commission_per_trade": config.commission_per_trade,
         "trade_size": config.trade_size,
         "min_trade_size": config.min_trade_size,
+        "max_trade_size": config.max_trade_size,
         "slippage": config.slippage,
         "sl_pct": config.sl_pct,
         "tp_pct": config.tp_pct,
+        "risk_per_trade_pct": config.risk_per_trade_pct,
+        "atr_stop_mult": config.atr_stop_mult,
+        "atr_tp_mult": config.atr_tp_mult,
+        "point_value": config.point_value,
         "max_bars_in_trade": config.max_bars_in_trade,
         "entry_threshold": config.entry_threshold,
         "n_trades": trade_count,
@@ -393,13 +458,19 @@ def _backtest_with_risk_from_signals(
     c: np.ndarray,
     v: np.ndarray,
     signals: np.ndarray,
+    atr: np.ndarray,
     initial_cash: float,
     commission_per_trade: float,
     trade_size: float,
     min_trade_size: float,
+    max_trade_size: float,
     slippage: float,
     sl_pct: float,
     tp_pct: float,
+    risk_per_trade_pct: float,
+    atr_stop_mult: float,
+    atr_tp_mult: float,
+    point_value: float,
     max_bars_in_trade: int,
 ) -> Tuple[
     np.ndarray,  # equity
@@ -437,6 +508,9 @@ def _backtest_with_risk_from_signals(
     position = 0.0
     entry_price = 0.0
     entry_bar_idx = -1
+    stop_price = 0.0
+    tp_price = 0.0
+    use_atr_stops = False
 
     # Prealocación para el log de trades
     max_trades = n // 2 + 1
@@ -466,16 +540,23 @@ def _backtest_with_risk_from_signals(
 
         # 1) Comprobar SL / TP / max_bars antes de nuevas señales
         if position > 0.0:
-            ret_from_entry = (price - entry_price) / entry_price
             bars_in_trade = i - entry_bar_idx
 
             reason = 0
 
-            if ret_from_entry <= -sl_pct:
-                reason = 1  # SL
-            elif ret_from_entry >= tp_pct:
-                reason = 2  # TP
-            elif bars_in_trade >= max_bars_in_trade:
+            if use_atr_stops:
+                if stop_price > 0.0 and price <= stop_price:
+                    reason = 1  # SL
+                elif tp_price > 0.0 and price >= tp_price:
+                    reason = 2  # TP
+            else:
+                ret_from_entry = (price - entry_price) / entry_price
+                if ret_from_entry <= -sl_pct:
+                    reason = 1  # SL
+                elif ret_from_entry >= tp_pct:
+                    reason = 2  # TP
+
+            if reason == 0 and bars_in_trade >= max_bars_in_trade:
                 reason = 3  # Time stop
 
             if reason != 0:
@@ -501,6 +582,9 @@ def _backtest_with_risk_from_signals(
                 position = 0.0
                 entry_price = 0.0
                 entry_bar_idx = -1
+                stop_price = 0.0
+                tp_price = 0.0
+                use_atr_stops = False
 
         # 2) Procesar señal de la estrategia (compra/venta)
         sig = signals[i]
@@ -532,11 +616,31 @@ def _backtest_with_risk_from_signals(
         # Señal de compra: abrir posición si estamos flat
         if sig == 1 and position == 0.0:
             trade_price = price + slippage
+            atr_val = atr[i] if i < atr.shape[0] else np.nan
+            has_atr = np.isfinite(atr_val)
+
+            desired_qty = trade_size
+            if risk_per_trade_pct > 0.0 and has_atr and atr_stop_mult > 0.0:
+                current_equity = cash + position * price
+                risk_qty = _compute_risk_based_qty(
+                    equity=current_equity,
+                    atr_value=atr_val,
+                    atr_stop_mult=atr_stop_mult,
+                    point_value=point_value,
+                    risk_per_trade_pct=risk_per_trade_pct,
+                    min_trade_size=min_trade_size,
+                    max_trade_size=max_trade_size,
+                )
+                if risk_qty > 0.0:
+                    desired_qty = risk_qty
+
+            desired_qty = _clip_size(desired_qty, min_trade_size, max_trade_size)
+
             qty = _calculate_affordable_qty(
                 available_cash=cash,
                 price_per_unit=trade_price,
                 commission_per_trade=commission_per_trade,
-                desired_qty=trade_size,
+                desired_qty=desired_qty,
                 min_trade_size=min_trade_size,
             )
             if qty > 0.0:
@@ -545,6 +649,18 @@ def _backtest_with_risk_from_signals(
                 cash -= commission_per_trade
                 entry_price = trade_price
                 entry_bar_idx = i
+
+                if has_atr and atr_stop_mult > 0.0:
+                    stop_distance = atr_stop_mult * atr_val
+                    stop_price = trade_price - stop_distance
+                    tp_price = 0.0
+                    if atr_tp_mult > 0.0:
+                        tp_price = trade_price + atr_tp_mult * atr_val
+                    use_atr_stops = stop_distance > 0.0
+                else:
+                    stop_price = 0.0
+                    tp_price = 0.0
+                    use_atr_stops = False
 
         # 3) Mark-to-market de la equity
         equity[i] = cash + position * price
@@ -572,6 +688,7 @@ def _backtest_with_risk_from_signals(
 def run_backtest_with_signals(
     data: OHLCVArrays,
     signals: np.ndarray,
+    atr: np.ndarray | None = None,
     config: BacktestConfig | None = None,
 ) -> BacktestResult:
     """
@@ -587,6 +704,13 @@ def run_backtest_with_signals(
     if signals.shape[0] != data.c.shape[0]:
         raise ValueError(
             f"El tamaño de signals ({signals.shape[0]}) no coincide con el número de barras ({data.c.shape[0]})."
+        )
+
+    if atr is None:
+        atr = np.full_like(data.c, np.nan, dtype=float)
+    elif atr.shape[0] != data.c.shape[0]:
+        raise ValueError(
+            f"El tamaño de atr ({atr.shape[0]}) no coincide con el número de barras ({data.c.shape[0]})."
         )
 
     (
@@ -610,13 +734,19 @@ def run_backtest_with_signals(
         c=data.c,
         v=data.v,
         signals=signals.astype(np.int8),
+        atr=atr,
         initial_cash=config.initial_cash,
         commission_per_trade=config.commission_per_trade,
         trade_size=config.trade_size,
         min_trade_size=config.min_trade_size,
+        max_trade_size=config.max_trade_size,
         slippage=config.slippage,
         sl_pct=config.sl_pct,
         tp_pct=config.tp_pct,
+        risk_per_trade_pct=config.risk_per_trade_pct,
+        atr_stop_mult=config.atr_stop_mult,
+        atr_tp_mult=config.atr_tp_mult,
+        point_value=config.point_value,
         max_bars_in_trade=config.max_bars_in_trade,
     )
 
@@ -638,9 +768,14 @@ def run_backtest_with_signals(
         "commission_per_trade": config.commission_per_trade,
         "trade_size": config.trade_size,
         "min_trade_size": config.min_trade_size,
+        "max_trade_size": config.max_trade_size,
         "slippage": config.slippage,
         "sl_pct": config.sl_pct,
         "tp_pct": config.tp_pct,
+        "risk_per_trade_pct": config.risk_per_trade_pct,
+        "atr_stop_mult": config.atr_stop_mult,
+        "atr_tp_mult": config.atr_tp_mult,
+        "point_value": config.point_value,
         "max_bars_in_trade": config.max_bars_in_trade,
         "entry_threshold": config.entry_threshold,
         "n_trades": trade_count,

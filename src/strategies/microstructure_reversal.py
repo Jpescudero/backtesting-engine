@@ -284,6 +284,7 @@ class StrategyMicrostructureReversal:
             "initial_stop_loss": initial_stop_loss.tolist(),
             "take_profit": take_profit.tolist(),
             "time_stop_bars": time_stop_bars.tolist(),
+            "atr": atr.tolist(),
         }
 
         return StrategyResult(signals=signals, meta=meta_summary)
