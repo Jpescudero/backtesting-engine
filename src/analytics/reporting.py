@@ -61,6 +61,19 @@ def trades_to_dataframe(
         "exit_reason_code": log["exit_reason"],
     })
 
+    stop_losses = result.extra.get("stop_losses") if result.extra else None
+    take_profits = result.extra.get("take_profits") if result.extra else None
+
+    if isinstance(stop_losses, np.ndarray) and stop_losses.shape[0] == data.c.shape[0]:
+        df["stop_loss"] = stop_losses[entry_idx]
+    else:
+        df["stop_loss"] = np.nan
+
+    if isinstance(take_profits, np.ndarray) and take_profits.shape[0] == data.c.shape[0]:
+        df["take_profit"] = take_profits[entry_idx]
+    else:
+        df["take_profit"] = np.nan
+
     # Mapear códigos a texto
     reason_map = {
         1: "stop_loss",
