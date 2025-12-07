@@ -21,7 +21,7 @@ from src.data.feeds import NPZOHLCVFeed, OHLCVArrays
 
 @dataclass
 class BestWorstConfig:
-    top_n: int = 3
+    top_n: int = 6
     window_bars_before: int = 30
     window_bars_after: int = 60
     timeframe: str = "1m"
@@ -212,16 +212,13 @@ def _plot_single_trade(
 def plot_best_and_worst_trades(
     trades_df: pd.DataFrame,
     data: OHLCVArrays,
-    n_best: int = 3,
+    n_best: int = 6,
     cfg: Optional[BestWorstConfig] = None,
-    save_path: Optional[Path] = None,
+    save_best_path: Optional[Path] = None,
+    save_worst_path: Optional[Path] = None,
     **kwargs,
-) -> plt.Figure:
-    """Genera figura con las N mejores y N peores operaciones.
-
-    Compatible con la llamada de main.py:
-        plot_best_and_worst_trades(trades_df=..., data=..., n_best=..., ...)
-    """
+) -> Tuple[plt.Figure, plt.Figure]:
+    """Genera dos figuras separadas con las N mejores y N peores operaciones."""
     trades = trades_df
 
     if trades.empty:
@@ -250,43 +247,51 @@ def plot_best_and_worst_trades(
     best = trades.nlargest(cfg.top_n, "pnl")
     worst = trades.nsmallest(cfg.top_n, "pnl")
 
-    fig, axes = plt.subplots(
-        nrows=cfg.top_n,
-        ncols=2,
-        figsize=cfg.figsize,
-        sharex=False,
-    )
-
-    if cfg.top_n == 1:
-        axes = np.array([[axes[0], axes[1]]])  # type: ignore[index]
-
-    for i in range(cfg.top_n):
-        _plot_single_trade(
-            ax=axes[i, 0],
-            trade=best.iloc[i],
-            data=data,
-            cfg=cfg,
-            side_label="BEST",
-            rank=i + 1,
-        )
-        _plot_single_trade(
-            ax=axes[i, 1],
-            trade=worst.iloc[i],
-            data=data,
-            cfg=cfg,
-            side_label="WORST",
-            rank=i + 1,
+    def _plot_trade_grid(trades_subset: pd.DataFrame, side_label: str) -> plt.Figure:
+        n_plots = len(trades_subset)
+        n_rows_grid = int(np.ceil(n_plots / 2))
+        fig, axes = plt.subplots(
+            nrows=n_rows_grid,
+            ncols=2,
+            figsize=cfg.figsize,
+            sharex=False,
         )
 
-    plt.tight_layout()
+        axes_arr = np.array(axes).reshape(n_rows_grid, 2)
+        axes_flat = axes_arr.ravel()
 
-    if save_path is not None:
-        save_path = Path(save_path)
-        save_path.parent.mkdir(parents=True, exist_ok=True)
-        fig.savefig(save_path, dpi=150, bbox_inches="tight")
-        print(f"[trade_plots] Figura guardada en: {save_path}")
+        for i in range(n_plots):
+            _plot_single_trade(
+                ax=axes_flat[i],
+                trade=trades_subset.iloc[i],
+                data=data,
+                cfg=cfg,
+                side_label=side_label,
+                rank=i + 1,
+            )
 
-    return fig
+        for j in range(n_plots, len(axes_flat)):
+            axes_flat[j].axis("off")
+
+        fig.tight_layout()
+        return fig
+
+    best_fig = _plot_trade_grid(best, "BEST")
+    worst_fig = _plot_trade_grid(worst, "WORST")
+
+    if save_best_path is not None:
+        save_best_path = Path(save_best_path)
+        save_best_path.parent.mkdir(parents=True, exist_ok=True)
+        best_fig.savefig(save_best_path, dpi=150, bbox_inches="tight")
+        print(f"[trade_plots] Figura guardada en: {save_best_path}")
+
+    if save_worst_path is not None:
+        save_worst_path = Path(save_worst_path)
+        save_worst_path.parent.mkdir(parents=True, exist_ok=True)
+        worst_fig.savefig(save_worst_path, dpi=150, bbox_inches="tight")
+        print(f"[trade_plots] Figura guardada en: {save_worst_path}")
+
+    return best_fig, worst_fig
 
 
 def load_trades_from_excel(excel_path: Path | str) -> pd.DataFrame:
@@ -305,9 +310,10 @@ def plot_best_and_worst_from_files(
     symbol: str,
     timeframe: str = "1m",
     cfg: Optional[BestWorstConfig] = None,
-    save_path: Optional[Path] = None,
-) -> plt.Figure:
-    """Convenience: carga datos NPZ + Excel y genera el plot."""
+    save_best_path: Optional[Path] = None,
+    save_worst_path: Optional[Path] = None,
+) -> Tuple[plt.Figure, plt.Figure]:
+    """Convenience: carga datos NPZ + Excel y genera los plots."""
     if cfg is None:
         cfg = BestWorstConfig(symbol=symbol, timeframe=timeframe)
 
@@ -320,21 +326,24 @@ def plot_best_and_worst_from_files(
         data=data,
         n_best=cfg.top_n,
         cfg=cfg,
-        save_path=save_path,
+        save_best_path=save_best_path,
+        save_worst_path=save_worst_path,
     )
 
 
 if __name__ == "__main__":
     # Ejemplo rápido (ajusta rutas a tu entorno)
     default_excel = Path("data/backtests/backtest_NDXm_barrida_apertura.xlsx")
-    out_png = default_excel.with_name("best_worst_trades.png")
+    out_best = default_excel.with_name("best_trades.png")
+    out_worst = default_excel.with_name("worst_trades.png")
 
     if default_excel.exists():
         plot_best_and_worst_from_files(
             excel_path=default_excel,
             symbol="NDXm",
             timeframe="1m",
-            save_path=out_png,
+            save_best_path=out_best,
+            save_worst_path=out_worst,
         )
         plt.show()
     else:

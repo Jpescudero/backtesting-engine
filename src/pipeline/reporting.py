@@ -18,7 +18,8 @@ class BacktestReports:
     equity_stats: Dict
     trade_stats: Dict
     equity_path: Path | None = None
-    trade_plot_path: Path | None = None
+    best_trade_plot_path: Path | None = None
+    worst_trade_plot_path: Path | None = None
     excel_path: Path | None = None
     json_path: Path | None = None
 
@@ -66,24 +67,27 @@ def generate_main_plots(result, data, reports_dir: Path | None, show: bool) -> P
     return save_path
 
 
-def generate_trade_plots(trades_df, data, reports_dir: Path | None, show: bool) -> Path | None:
-    fig = plot_best_and_worst_trades(
+def generate_trade_plots(trades_df, data, reports_dir: Path | None, show: bool) -> Tuple[Path | None, Path | None]:
+    best_path = (reports_dir / "best_trades.png") if reports_dir else None
+    worst_path = (reports_dir / "worst_trades.png") if reports_dir else None
+
+    best_fig, worst_fig = plot_best_and_worst_trades(
         trades_df=trades_df,
         data=data,
-        n_best=3,
-        n_worst=3,
+        n_best=6,
         pnl_col="pnl",
         entry_col="entry_idx",
         exit_col="exit_idx",
         direction_col="direction",
         window=30,
         figsize=(14, 10),
-        save_path=(reports_dir / "best_worst_trades.png") if reports_dir else None,
+        save_best_path=best_path,
+        save_worst_path=worst_path,
     )
 
-    save_path = (reports_dir / "best_worst_trades.png") if reports_dir else None
     if show:
         plt.show()
     else:
-        plt.close(fig)
-    return save_path
+        plt.close(best_fig)
+        plt.close(worst_fig)
+    return best_path, worst_path
