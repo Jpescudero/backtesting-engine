@@ -1,55 +1,54 @@
 # Backtesting Engine — High-Performance Intraday Backtesting Framework
 
+This project is a **high-performance intraday backtesting engine** built in **Python** and accelerated with **Numba**. It turns **Darwinex BID/ASK market data** (currently focused on *NDXm*) into reproducible research pipelines and realistic execution simulations.
 
-This project is a **high-performance intraday backtesting engine** built in **Python** and accelerated with **Numba**, designed to process **Darwinex BID/ASK market data** (currently focused on the *NDXm* index) and evaluate algorithmic trading strategies under realistic execution constraints.
+Latest highlights:
 
-It provides a **complete end-to-end data pipeline**—from raw Darwinex tick logs to aggregated 1-minute OHLCV bars, NumPy-optimized NPZ files, and finally a fully vectorized backtesting engine capable of handling thousands of trades efficiently.  
-The framework includes:
+- 🔄 **End-to-end data pipeline**: automatically generate tick parquet files, 1-minute OHLCV CSVs, and NPZ arrays ready for Numba. Convenience helpers (`ensure_ticks_and_csv`, `ensure_npz_from_csv`, `prepare_npz_dataset`) make sure all artifacts exist before a run.
+- 🧭 **Strategy catalog**: includes the **Microstructure Reversal** strategy with rich parameters (EMA/ATR context, pullback and exhaustion detection, structure-break filter, bullish shift candle) plus the existing opening-sweep example.
+- ⚙️ **Configurable backtesting core**: Numba-accelerated engine with stop-loss / take-profit, max duration, commission, slippage, entry thresholds, and position sizing via `BacktestConfig`.
+- 📈 **Analytics & reports**: automatic conversion to pandas structures, equity/trade metrics, and lightweight Excel + JSON export with size-safe helpers. Generates equity + monthly trades plots and best/worst trade snapshots.
+- 🎛️ **CLI orchestration**: `main.py` wraps a full pipeline (data prep → signals → backtest → reports) with flags for symbol, timeframe, strategy tuning, SL/TP, slippage/commission, train/test years, and headless plotting.
+- 🗂️ **Train/test slicing**: load specific years from NPZ feeds to isolate training vs testing periods without touching raw files.
 
-- A robust **Darwinex data ingestion and cleaning pipeline**
-- **1-minute bar generation** and NPZ conversion for ultra-fast backtests
-- A **Numba-accelerated backtesting core** supporting SL/TP, max-duration rules, commission, slippage, and position sizing
-- A modular **strategy layer** with an example “Opening Sweep / Liquidity Grab” strategy
-- Comprehensive **reporting modules**: equity curves, performance metrics, trade analytics, and export to Excel/JSON
-- Visualization tools for **best/worst trades**, equity curve plotting, and trade distributions
-
-The goal of the framework is to serve as a **research-ready, production-oriented foundation** for exploring intraday pattern-based strategies—especially those relying on liquidity events (e.g., morning or afternoon opening sweeps) and high-volume reversal behavior that may be suitable for DARWIN-style systematic trading approaches.
-
+The framework aims to be a **research-ready, production-oriented foundation** for exploring intraday pattern-based strategies—especially those relying on liquidity events and high-volume reversal behavior suitable for DARWIN-style systematic trading.
 
 ---
 
-## 📁 1.Project Structure
+## 📁 1. Project Structure
 
 ### 1.1 Table View
 
-| Path                                 | Description |
-|-------------------------------------|-------------|
-| `main.py`                           | Entry point orchestrating full pipeline |
-| `src/config/paths.py`               | Global paths and directory management |
-| `src/data/data_utils.py`            | Helpers for file discovery & aggregation |
-| `src/data/data_to_parquet.py`       | Convert Darwinex BID/ASK logs → parquet |
-| `src/data/bars1m_to_excel.py`       | Build 1-minute OHLCV CSV files |
-| `src/data/csv_1m_to_npz.py`         | Convert OHLCV CSV → NPZ (Numba-ready) |
-| `src/data/parquet_to_npz.py`        | Convert parquet bars → NPZ arrays |
-| `src/data/feeds.py`                 | Data feed (NPZ loader for the engine) |
-| `src/data/organize_darwinex_files.py` | (Pending) Organize raw tick logs |
-| `src/engine/core.py`                | Numba-powered backtesting engine |
-| `src/analytics/metrics.py`          | Performance metrics |
-| `src/analytics/reporting.py`        | Convert results → pandas structures |
-| `src/analytics/plots.py`            | Equity/trade visualization tools |
-| `src/strategies/`                   | Strategy modules |
-| `src/visualization/`                | Future dashboards |
-| `data/raw/darwinex/`                | Raw tick logs (BID/ASK) |
-| `data/parquet/ticks/`               | Parquet files of cleaned ticks |
-| `data/parquet/bars_1m/`             | Parquet 1-minute bars |
-| `data/npz/`                         | Numba-ready NPZ files |
-| `data/other/`                       | Misc additional files |
-| `notebooks/`                        | Research notebooks |
-| `reports/`                          | HTML/PDF reports |
+| Path                                   | Description |
+|----------------------------------------|-------------|
+| `main.py`                              | CLI entry point orchestrating full pipeline |
+| `src/config/paths.py`                  | Global paths and directory management |
+| `src/data/data_utils.py`               | Helpers for file discovery & aggregation |
+| `src/data/data_to_parquet.py`          | Convert Darwinex BID/ASK logs → parquet |
+| `src/data/bars1m_to_excel.py`          | Build 1-minute OHLCV CSV files |
+| `src/data/csv_1m_to_npz.py`            | Convert OHLCV CSV → NPZ (Numba-ready) |
+| `src/data/parquet_to_npz.py`           | Convert parquet bars → NPZ arrays |
+| `src/data/feeds.py`                    | Data feed (NPZ loader with year slicing) |
+| `src/pipeline/data_pipeline.py`        | High-level helpers to ensure CSV/NPZ artifacts exist |
+| `src/pipeline/backtest_runner.py`      | Orchestrates data prep, signals, backtests, and reports |
+| `src/pipeline/reporting.py`            | Analytics, plots, and export helpers |
+| `src/engine/core.py`                   | Numba-powered backtesting engine |
+| `src/analytics/metrics.py`             | Performance metrics |
+| `src/analytics/reporting.py`           | Convert results → pandas structures |
+| `src/analytics/plots.py`               | Equity/trade visualization tools |
+| `src/analytics/trade_plots.py`         | Best/worst trade charting |
+| `src/strategies/`                      | Strategy modules |
+| `src/utils/`                           | Timing utilities and shared helpers |
+| `data/raw/darwinex/`                   | Raw tick logs (BID/ASK) |
+| `data/parquet/ticks/`                  | Parquet files of cleaned ticks |
+| `data/parquet/bars_1m/`                | Parquet 1-minute bars |
+| `data/npz/`                            | Numba-ready NPZ files |
+| `notebooks/`                           | Research notebooks |
+| `reports/`                             | Generated reports and plots |
 
 ### 1.2 Codeblock
 
-- **main.py** — Main entry point of the entire workflow  
+- **main.py** — Main entry point of the entire workflow
 - **src/**
   - **config/**
     - `paths.py` — Defines all project directory paths
@@ -59,22 +58,25 @@ The goal of the framework is to serve as a **research-ready, production-oriented
     - `bars1m_to_excel.py` — Build 1m OHLCV bars
     - `csv_1m_to_npz.py` — Convert 1m bars → NPZ
     - `parquet_to_npz.py` — Convert parquet bars → NPZ
-    - `feeds.py` — Data feed loader for NPZ files
-    - `organize_darwinex_files.py` — Pending
+    - `feeds.py` — Data feed loader for NPZ files (with `load_all` / `load_years`)
+  - **pipeline/**
+    - `data_pipeline.py` — Ensure ticks → CSV → NPZ artifacts exist
+    - `backtest_runner.py` — Run strategies + engine + reports in one call
+    - `reporting.py` — Analytics + plots + Excel/JSON export helpers
   - **engine/**
     - `core.py` — Backtesting engine (Numba)
   - **analytics/**
     - `metrics.py` — Performance metrics
     - `reporting.py` — Reporting utilities
     - `plots.py` — Visualization tools
+    - `trade_plots.py` — Best/worst trade snapshots
   - **strategies/** — Strategy implementations
-  - **visualization/** — Dashboard modules
+  - **utils/** — Timing and misc helpers
 - **data/**
   - `raw/darwinex/` — Original tick logs
   - `parquet/ticks/` — Cleaned tick files
   - `parquet/bars_1m/` — OHLCV bars
   - `npz/` — Numba-ready arrays
-  - `other/`
 - **notebooks/** — Research & experiments
 - **reports/** — Generated reports
 
@@ -82,87 +84,48 @@ The goal of the framework is to serve as a **research-ready, production-oriented
 
 ## 🚀 2. Workflow Overview
 
-### **2.1. Darwinex Tick Logs → Parquet**
+### 2.1 Data ingestion (Darwinex tick logs → parquet → CSV → NPZ)
 
-The system processes raw BID/ASK logs into structured parquet files, organized by:
-parquet/ticks/<symbol>/<year>/<symbol>_YYYY-MM-DD_HH.parquet
-Handled by: `data_to_parquet.py`t
+1. **Tick parquet generation** — `data_to_parquet.py` converts BID/ASK logs into hourly parquet shards under `data/parquet/ticks/<symbol>/<year>/`.
+2. **1-minute bars** — `bars1m_to_excel.py` aggregates all ticks into a unified CSV (`barras_1min_<symbol>_all_years.csv`).
+3. **NPZ arrays (Numba-ready)** — `csv_1m_to_npz.py` turns the CSV into compact NumPy arrays (`timestamps, open, high, low, close, volume`).
+4. **Automation helpers** — `prepare_npz_dataset` chains the previous steps and guarantees both the CSV and NPZ exist, so pipelines can be started with a single call.
 
----
+### 2.2 Loading data for backtests
 
-### **2.2. Parquet → 1-Minute OHLCV Bars**
-All ticks are aggregated into a single unified CSV:
-barras_1min_<symbol>_all_years.csv
-Handled by: `bars1m_to_excel.py`
+`NPZOHLCVFeed` (src/data/feeds.py) streams NPZ arrays and can slice specific years via `load_years` or load the full history with `load_all`. This makes it easy to separate **training** and **testing** windows without duplicating files.
 
----
+### 2.3 Strategies
 
-### **2.3. 1-Minute Bars → NPZ Arrays (Numba-Ready)**
-Numerical arrays include:
-timestamps, open, high, low, close, volume
-Handled by: `csv_1m_to_npz.py`
+All strategies live in `src/strategies/` and return **signal arrays** aligned with OHLCV data.
 
----
+- **Microstructure Reversal** (`StrategyMicrostructureReversal`): long-only, trend-filtered setup that detects pullbacks, exhaustion bars, a bullish shift candle, and a break of short-term structure. Parameters cover EMA/ATR configuration, pullback depth/length, exhaustion candle shape, shift candle strength, and structure-break lookback.
+- **Opening Sweep / Liquidity Grab** (`StrategyBarridaApertura`): example strategy for high-volume morning sweeps.
 
-### **2.4. Data Feed Loader**
-Loads the NPZ arrays into structured objects
-
----
-
-### **2.5. Strategies**
-
-All trading strategies reside inside:
-src/strategies/
-
-
-Each strategy is responsible for generating a **signal array** aligned with the OHLCV data:
-
-- `+1` → long entry  
-- `-1` → short entry (if enabled)  
-- `0` → no trade  
-
-Example strategy included:  
-**Sweep-Reversal Opening Strategy (`StrategyBarridaApertura`)**
-
-This strategy detects:
-
-- High-volume washout candles near market open  
-- One or two consecutive bearish bars  
-- A local reversal trigger  
-
-Usage:
+Example:
 
 ```python
-from src.strategies.barrida_apertura import StrategyBarridaApertura
+from src.strategies.microstructure_reversal import StrategyMicrostructureReversal
 
-strategy = StrategyBarridaApertura(
-    volume_percentile=80,
-    use_two_bearish_bars=True
+strategy = StrategyMicrostructureReversal(
+    ema_short=20,
+    ema_long=50,
+    atr_period=20,
+    min_pullback_atr=0.4,
+    max_pullback_atr=1.1,
+    max_pullback_bars=8,
 )
 
 signals = strategy.generate_signals(data).signals
 ```
 
----
+### 2.4 Backtesting engine
 
-### **2.6. Backtesting Engine**
+Implemented in `src/engine/core.py`. Key features:
 
-The backtesting engine is implemented in:
-src/engine/core.py
-
-Its main responsibilities are:
-
-- Execute strategies using precomputed **signals**
-- Simulate order execution (market-style)
-- Apply **commission**, **slippage**, and **trade sizing**
-- Enforce risk rules:
-  - Stop-Loss (percentage-based)
-  - Take-Profit (percentage-based)
-  - Maximum duration in bars
-- Manage cash, equity, and portfolio state
-- Produce a structured result object (`BacktestResult`)
-
-Example usage:
+- Vectorized, Numba-accelerated execution for thousands of trades.
+- Stop-loss / take-profit, maximum bars in trade, entry thresholds, commission, slippage, and position sizing via `BacktestConfig`.
+- Returns a structured `BacktestResult` with cash, position, equity curve, trade logs, and metadata.
 
 ```python
 from src.engine.core import BacktestConfig, run_backtest_with_signals
@@ -172,77 +135,51 @@ config = BacktestConfig(
     commission_per_trade=1.0,
     slippage=0.0,
     trade_size=1.0,
-    sl_pct=0.01,          # 1% stop-loss
-    tp_pct=0.02,          # 2% take-profit
-    max_bars_in_trade=60  # 1-hour limit on 1m bars
+    sl_pct=0.01,
+    tp_pct=0.02,
+    max_bars_in_trade=60,
 )
 
 result = run_backtest_with_signals(data, signals, config)
 ```
 
-Output includes:
+### 2.5 Analytics, reporting & visualization
 
-Final cash and equity
-Full bar-by-bar equity curve
-Trade logs (entries, exits, PnL, duration)
-Extra metadata (e.g., number of trades)
+Located under `src/analytics/` and `src/pipeline/reporting.py`:
 
----
+- **Metric calculators** (`equity_curve_metrics`, `trades_metrics`) for returns, drawdowns, Sharpe-like ratios, expectancy, win rate, trade duration, and more.
+- **Pandas converters** (`equity_to_series`, `trades_to_dataframe`) to turn engine outputs into analysis-ready structures.
+- **Plots** (`plot_equity_curve`, `plot_trades_per_month`, `plot_best_and_worst_trades`) for equity curves, monthly trade distributions, and best/worst trade breakdowns.
+- **Report artifacts** (`generate_report_files`) save lightweight Excel + JSON summaries with size guards to keep exports and load times manageable.
 
-### **2.7. Metrics, Reporting & Visualization**
+### 2.6 Orchestrated pipeline (CLI)
 
-All analytical and visualization tools are located in: src/analytics/
+`main.py` wires everything together. It uses `run_single_backtest` to:
 
+1. Prepare data (generate parquet/CSV/NPZ if missing).
+2. Load NPZ feeds (optionally selecting train/test years).
+3. Generate strategy signals (Microstructure Reversal by default).
+4. Run the Numba engine with the chosen `BacktestConfig`.
+5. Compute metrics, export Excel/JSON, and render equity + trade plots (headless-friendly).
 
-This module provides three main components:
+Common flags:
 
-#### **2.7.1 Performance Metrics**
+- `--symbol`, `--timeframe`: select instrument and bar size.
+- Strategy tuning: `--ema-short`, `--ema-long`, `--atr-period`, `--min-pullback-atr`, `--max-pullback-atr`, `--max-pullback-bars`, `--exhaustion-close-min`, `--exhaustion-close-max`, `--exhaustion-body-max-ratio`, `--shift-body-atr`, `--structure-break-lookback`.
+- Risk/execution: `--initial-cash`, `--commission`, `--trade-size`, `--slippage`, `--sl-pct`, `--tp-pct`, `--max-bars`, `--entry-threshold`.
+- Data splits: `--train-years 2019,2020`, `--test-years 2021,2022`, `--use-test-years`.
+- Reporting: `--no-report-files`, `--no-main-plots`, `--no-trade-plots`, `--headless`.
 
-File:src/analytics/metrics.py
+Example CLI run:
 
-This module computes detailed performance statistics for both the equity curve and trade logs.
-
-Available functions include:
-
-- **`equity_curve_metrics(series)`**
-  - Total Return  
-  - Annualized Return  
-  - Max Drawdown  
-  - Volatility  
-  - Sharpe-like ratios  
-  - Return distribution metrics  
-
-- **`trades_metrics(trades_df)`**
-  - Win rate  
-  - Average win / loss  
-  - Expectancy  
-  - Profit factor  
-  - Average trade duration  
-  - Best/worst trades  
-
-Example usage:
-
-```python
-from src.analytics.metrics import equity_curve_metrics
-
-metrics = equity_curve_metrics(eq_series)
-print(metrics)
+```bash
+python main.py --symbol NDXm --timeframe 1m --ema-short 20 --ema-long 50 \
+  --atr-period 20 --min-pullback-atr 0.4 --max-pullback-atr 1.1 --max-pullback-bars 8 \
+  --sl-pct 0.01 --tp-pct 0.02 --commission 1.0 --slippage 0.0 --trade-size 1.0 \
+  --train-years 2019,2020 --test-years 2021,2022 --headless
 ```
 
-#### **2.7.2 Reporting Utilities**
-
-The reporting utilities are located in:
-src/analytics/reporting.py
-
-This module provides functions to convert raw backtest results into clean, analysis-ready pandas structures.
-
-#### **2.7.3 Visualization Tools**
-
-All visualization utilities are located in:
-src/analytics/plots.py
-
 ---
-
 
 📄 License
 
