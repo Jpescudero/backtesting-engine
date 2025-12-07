@@ -37,9 +37,15 @@ class MicrostructureParams:
     volume_period: int = 20
     min_rvol: float = 1.0
 
-    atr_stop_mult: float = 0.8
-    atr_tp_mult: float = 1.2
-    max_holding_bars: int = 15
+    atr_stop_mult: float = 0.35
+    atr_tp_mult: float = 0.7
+    structure_buffer_atr: float = 0.2
+    structure_stop_lookback: int = 6
+
+    breakeven_atr_trigger: float = 0.5
+    breakeven_lookahead: int = 10
+
+    max_holding_bars: int = 60
 
 
 class StrategyMicrostructureReversal:
@@ -97,6 +103,14 @@ class StrategyMicrostructureReversal:
     @staticmethod
     def _rolling_min(arr: np.ndarray, window: int) -> np.ndarray:
         return pd.Series(arr).rolling(window, min_periods=1).min().to_numpy()
+
+    @staticmethod
+    def _forward_rolling_max(arr: np.ndarray, window: int) -> np.ndarray:
+        return pd.Series(arr[::-1]).rolling(window, min_periods=1).max().to_numpy()[::-1]
+
+    @staticmethod
+    def _forward_rolling_min(arr: np.ndarray, window: int) -> np.ndarray:
+        return pd.Series(arr[::-1]).rolling(window, min_periods=1).min().to_numpy()[::-1]
 
     # ---------------------------------------------------------
     # API principal
@@ -208,12 +222,40 @@ class StrategyMicrostructureReversal:
         take_profit = np.full(n, np.nan, dtype=float)
         time_stop_bars = np.zeros(n, dtype=int)
 
-        atr_entry = atr
-        initial_stop_loss[entries_long] = c[entries_long] - p.atr_stop_mult * atr_entry[entries_long]
-        take_profit[entries_long] = c[entries_long] + p.atr_tp_mult * atr_entry[entries_long]
+        swing_low_stop = self._rolling_min(l, p.structure_stop_lookback)
+        swing_high_stop = self._rolling_max(h, p.structure_stop_lookback)
 
-        initial_stop_loss[entries_short] = c[entries_short] + p.atr_stop_mult * atr_entry[entries_short]
-        take_profit[entries_short] = c[entries_short] - p.atr_tp_mult * atr_entry[entries_short]
+        atr_entry = atr
+        sl_long = np.minimum(
+            c - p.atr_stop_mult * atr_entry,
+            swing_low_stop - p.structure_buffer_atr * atr_entry,
+        )
+        sl_short = np.maximum(
+            c + p.atr_stop_mult * atr_entry,
+            swing_high_stop + p.structure_buffer_atr * atr_entry,
+        )
+
+        tp_long = c + p.atr_tp_mult * atr_entry
+        tp_short = c - p.atr_tp_mult * atr_entry
+
+        # Break-even tras movimiento a favor
+        future_max_high = self._forward_rolling_max(h, p.breakeven_lookahead)
+        future_min_low = self._forward_rolling_min(l, p.breakeven_lookahead)
+
+        mfe_long = future_max_high - c
+        mfe_short = c - future_min_low
+
+        be_on_long = mfe_long >= p.breakeven_atr_trigger * atr_entry
+        be_on_short = mfe_short >= p.breakeven_atr_trigger * atr_entry
+
+        sl_long = np.where(be_on_long, np.maximum(sl_long, c), sl_long)
+        sl_short = np.where(be_on_short, np.minimum(sl_short, c), sl_short)
+
+        initial_stop_loss[entries_long] = sl_long[entries_long]
+        take_profit[entries_long] = tp_long[entries_long]
+
+        initial_stop_loss[entries_short] = sl_short[entries_short]
+        take_profit[entries_short] = tp_short[entries_short]
 
         time_stop_bars[entries_long | entries_short] = p.max_holding_bars
 
