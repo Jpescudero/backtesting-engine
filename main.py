@@ -24,13 +24,20 @@ from src.pipeline.backtest_runner import (
 
 
 def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Ejecuta un backtest Barrida Apertura")
+    parser = argparse.ArgumentParser(description="Ejecuta un backtest Microstructure Reversal")
     parser.add_argument("--symbol", default="NDXm", help="Símbolo a backtestear")
     parser.add_argument("--timeframe", default="1m", help="Timeframe del feed NPZ")
-    parser.add_argument("--volume-percentile", type=float, default=80.0,
-                        help="Percentil de volumen para la estrategia")
-    parser.add_argument("--disable-two-bearish-bars", action="store_true",
-                        help="Desactivar condición de dos velas bajistas")
+    parser.add_argument("--ema-short", type=int, default=20, help="EMA corta para filtro de tendencia")
+    parser.add_argument("--ema-long", type=int, default=50, help="EMA larga para filtro de tendencia")
+    parser.add_argument("--atr-period", type=int, default=20, help="Periodo ATR para normalizar rangos")
+    parser.add_argument("--min-pullback-atr", type=float, default=0.4, help="Retroceso mínimo en ATR")
+    parser.add_argument("--max-pullback-atr", type=float, default=1.1, help="Retroceso máximo en ATR")
+    parser.add_argument("--max-pullback-bars", type=int, default=8, help="Velas máximas del pullback")
+    parser.add_argument("--exhaustion-close-min", type=float, default=0.4, help="Posición mínima del cierre de la vela de agotamiento")
+    parser.add_argument("--exhaustion-close-max", type=float, default=0.6, help="Posición máxima del cierre de la vela de agotamiento")
+    parser.add_argument("--exhaustion-body-max-ratio", type=float, default=0.4, help="Relación máxima cuerpo/rango para la vela de agotamiento")
+    parser.add_argument("--shift-body-atr", type=float, default=0.6, help="Mínimo cuerpo de la vela shift en ATR")
+    parser.add_argument("--structure-break-lookback", type=int, default=3, help="Ventana de ruptura de microestructura")
     parser.add_argument("--config-file", type=str, default=None,
                         help="Ruta a archivo de configuración simple key=value")
     parser.add_argument("--initial-cash", type=float, default=None,
@@ -115,8 +122,18 @@ def _print_run_context(run_config: BacktestRunConfig) -> None:
         ("Umbral entrada", _format_number(cfg.entry_threshold)),
         (
             "Estrategia",
-            f"vol% {_format_number(run_config.strategy_params.volume_percentile)} | "
-            f"2 velas bajistas={'sí' if run_config.strategy_params.use_two_bearish_bars else 'no'}",
+            "microstructure_reversal",
+        ),
+        (
+            "Params estrategia",
+            " | ".join(
+                [
+                    f"EMA {run_config.strategy_params.ema_short}/{run_config.strategy_params.ema_long}",
+                    f"ATR {run_config.strategy_params.atr_period}",
+                    f"pullback {run_config.strategy_params.min_pullback_atr}-{run_config.strategy_params.max_pullback_atr} ATR",
+                    f"shift ≥{run_config.strategy_params.shift_body_atr} ATR",
+                ]
+            ),
         ),
         ("Años train", ",".join(map(str, run_config.train_years)) if run_config.train_years else "(todos)"),
         (
@@ -237,8 +254,17 @@ def main(argv: Iterable[str] | None = None) -> None:
     use_test_years = _get_setting(args.use_test_years, config_file_values, "use_test_years", False, lambda v: str(v).lower() == "true")
 
     strategy_params = StrategyParams(
-        volume_percentile=args.volume_percentile,
-        use_two_bearish_bars=not args.disable_two_bearish_bars,
+        ema_short=args.ema_short,
+        ema_long=args.ema_long,
+        atr_period=args.atr_period,
+        min_pullback_atr=args.min_pullback_atr,
+        max_pullback_atr=args.max_pullback_atr,
+        max_pullback_bars=args.max_pullback_bars,
+        exhaustion_close_min=args.exhaustion_close_min,
+        exhaustion_close_max=args.exhaustion_close_max,
+        exhaustion_body_max_ratio=args.exhaustion_body_max_ratio,
+        shift_body_atr=args.shift_body_atr,
+        structure_break_lookback=args.structure_break_lookback,
     )
 
     backtest_config = BacktestConfig(
