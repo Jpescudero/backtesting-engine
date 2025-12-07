@@ -10,7 +10,7 @@ import numpy as np
 
 from src.analytics.reporting import equity_to_series, trades_to_dataframe
 from src.config.paths import REPORTS_DIR
-from src.data.feeds import NPZOHLCVFeed
+from src.data.feeds import NPZOHLCVFeed, OHLCVArrays
 from src.engine.core import BacktestConfig, run_backtest_with_signals
 from src.pipeline.data_pipeline import prepare_npz_dataset
 from src.pipeline.reporting import (
@@ -32,6 +32,8 @@ class StrategyParams:
     ema_short: int = 20
     ema_long: int = 50
     atr_period: int = 20
+    atr_timeframe: Optional[str] = "1m"
+    atr_timeframe_period: int = 10
     min_pullback_atr: float = 0.4
     max_pullback_atr: float = 1.1
     max_pullback_bars: int = 8
@@ -100,9 +102,16 @@ def run_single_backtest(config: BacktestRunConfig) -> BacktestArtifacts:
 
     with timed_step(timings, "01_datos_preparacion"):
         bars_csv_path, npz_path = prepare_npz_dataset(config.symbol, timeframe=config.timeframe)
+        atr_npz_path: Optional[Path] = None
+        atr_tf = config.strategy_params.atr_timeframe
+        if atr_tf and atr_tf != config.timeframe:
+            _, atr_npz_path = prepare_npz_dataset(config.symbol, timeframe=atr_tf)
     logger.info("CSV 1m listo: %s", bars_csv_path)
     logger.info("NPZ listo: %s", npz_path)
+    if atr_npz_path:
+        logger.info("NPZ ATR (tf %s) listo: %s", atr_tf, atr_npz_path)
 
+    atr_data: Optional[OHLCVArrays] = None
     with timed_step(timings, "02_carga_feed_npz"):
         feed = NPZOHLCVFeed(symbol=config.symbol, timeframe=config.timeframe)
 
@@ -122,11 +131,23 @@ def run_single_backtest(config: BacktestRunConfig) -> BacktestArtifacts:
         else:
             data = feed.load_all()
 
+        atr_tf = config.strategy_params.atr_timeframe
+        if atr_tf and atr_tf != config.timeframe:
+            atr_feed = NPZOHLCVFeed(symbol=config.symbol, timeframe=atr_tf)
+            if use_test_years:
+                atr_data = atr_feed.load_years(config.test_years)
+            elif config.train_years:
+                atr_data = atr_feed.load_years(config.train_years)
+            else:
+                atr_data = atr_feed.load_all()
+
     with timed_step(timings, "03_generar_senales_estrategia"):
         strategy = StrategyMicrostructureReversal(
             ema_short=config.strategy_params.ema_short,
             ema_long=config.strategy_params.ema_long,
             atr_period=config.strategy_params.atr_period,
+            atr_timeframe=config.strategy_params.atr_timeframe,
+            atr_timeframe_period=config.strategy_params.atr_timeframe_period,
             min_pullback_atr=config.strategy_params.min_pullback_atr,
             max_pullback_atr=config.strategy_params.max_pullback_atr,
             max_pullback_bars=config.strategy_params.max_pullback_bars,
@@ -136,7 +157,15 @@ def run_single_backtest(config: BacktestRunConfig) -> BacktestArtifacts:
             shift_body_atr=config.strategy_params.shift_body_atr,
             structure_break_lookback=config.strategy_params.structure_break_lookback,
         )
-        strat_res = strategy.generate_signals(data)
+
+        atr_override = None
+        if atr_data is not None:
+            atr_override = strategy.compute_lower_timeframe_atr(
+                lower_data=atr_data,
+                target_ts=data.ts,
+            )
+
+        strat_res = strategy.generate_signals(data, external_atr=atr_override)
     n_signals = int((strat_res.signals != 0).sum())
     logger.info("Estrategia Microstructure Reversal: %s señales generadas", n_signals)
 

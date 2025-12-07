@@ -30,6 +30,18 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--ema-short", type=int, default=20, help="EMA corta para filtro de tendencia")
     parser.add_argument("--ema-long", type=int, default=50, help="EMA larga para filtro de tendencia")
     parser.add_argument("--atr-period", type=int, default=20, help="Periodo ATR para normalizar rangos")
+    parser.add_argument(
+        "--atr-timeframe",
+        type=str,
+        default="1m",
+        help="Timeframe dedicado para el cálculo del ATR (p.ej. 1m)",
+    )
+    parser.add_argument(
+        "--atr-timeframe-period",
+        type=int,
+        default=10,
+        help="Periodo ATR a usar en el timeframe dedicado",
+    )
     parser.add_argument("--min-pullback-atr", type=float, default=0.4, help="Retroceso mínimo en ATR")
     parser.add_argument("--max-pullback-atr", type=float, default=1.1, help="Retroceso máximo en ATR")
     parser.add_argument("--max-pullback-bars", type=int, default=8, help="Velas máximas del pullback")
@@ -129,6 +141,9 @@ def _print_run_context(run_config: BacktestRunConfig) -> None:
             " | ".join(
                 [
                     f"EMA {run_config.strategy_params.ema_short}/{run_config.strategy_params.ema_long}",
+                    "ATR tf "
+                    f"{run_config.strategy_params.atr_timeframe}"
+                    f" p{run_config.strategy_params.atr_timeframe_period}",
                     f"ATR {run_config.strategy_params.atr_period}",
                     f"pullback {run_config.strategy_params.min_pullback_atr}-{run_config.strategy_params.max_pullback_atr} ATR",
                     f"shift ≥{run_config.strategy_params.shift_body_atr} ATR",
@@ -257,6 +272,8 @@ def main(argv: Iterable[str] | None = None) -> None:
         ema_short=args.ema_short,
         ema_long=args.ema_long,
         atr_period=args.atr_period,
+        atr_timeframe=args.atr_timeframe,
+        atr_timeframe_period=args.atr_timeframe_period,
         min_pullback_atr=args.min_pullback_atr,
         max_pullback_atr=args.max_pullback_atr,
         max_pullback_bars=args.max_pullback_bars,

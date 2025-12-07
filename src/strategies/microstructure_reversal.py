@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 
 import numpy as np
 import pandas as pd
@@ -22,6 +22,8 @@ class MicrostructureParams:
     ema_short: int = 20
     ema_long: int = 50
     atr_period: int = 20
+    atr_timeframe: Optional[str] = "1m"
+    atr_timeframe_period: int = 10
 
     min_pullback_atr: float = 0.4
     max_pullback_atr: float = 1.1
@@ -102,6 +104,27 @@ class StrategyMicrostructureReversal:
         return atr
 
     @staticmethod
+    def _align_indicator_to_target_ts(
+        indicator: np.ndarray, source_ts: np.ndarray, target_ts: np.ndarray
+    ) -> np.ndarray:
+        """
+        Reindexa un array de indicador calculado en otro timeframe para que
+        coincida con los timestamps objetivo (relleno forward-fill).
+        """
+        if indicator.shape[0] == 0:
+            return np.zeros_like(target_ts, dtype=float)
+
+        source_index = pd.to_datetime(source_ts, utc=True)
+        target_index = pd.to_datetime(target_ts, utc=True)
+
+        aligned = (
+            pd.Series(indicator, index=source_index)
+            .reindex(target_index, method="ffill")
+            .to_numpy()
+        )
+        return aligned
+
+    @staticmethod
     def _rolling_max(arr: np.ndarray, window: int) -> np.ndarray:
         return pd.Series(arr).rolling(window, min_periods=1).max().to_numpy()
 
@@ -117,10 +140,34 @@ class StrategyMicrostructureReversal:
     def _forward_rolling_min(arr: np.ndarray, window: int) -> np.ndarray:
         return pd.Series(arr[::-1]).rolling(window, min_periods=1).min().to_numpy()[::-1]
 
+    def compute_lower_timeframe_atr(
+        self, lower_data: OHLCVArrays, target_ts: np.ndarray
+    ) -> np.ndarray:
+        """
+        Calcula un ATR en un timeframe inferior (por ejemplo 1m) y lo reindexa
+        a los timestamps del dataframe objetivo.
+
+        Esto permite usar SL/TP basados en la microestructura, evitando ATR
+        inflados por gaps o rangos amplios del timeframe de backtest.
+        """
+
+        atr_lower = self._atr(
+            h=np.asarray(lower_data.h),
+            l=np.asarray(lower_data.l),
+            c=np.asarray(lower_data.c),
+            period=self.params.atr_timeframe_period,
+        )
+
+        return self._align_indicator_to_target_ts(
+            indicator=atr_lower, source_ts=lower_data.ts, target_ts=target_ts
+        )
+
     # ---------------------------------------------------------
     # API principal
     # ---------------------------------------------------------
-    def generate_signals(self, data: OHLCVArrays) -> StrategyResult:
+    def generate_signals(
+        self, data: OHLCVArrays, external_atr: Optional[np.ndarray] = None
+    ) -> StrategyResult:
         o = np.asarray(data.o)
         h = np.asarray(data.h)
         l = np.asarray(data.l)
@@ -151,7 +198,14 @@ class StrategyMicrostructureReversal:
         downtrend_mask = ema_short < ema_long
 
         # 2) ATR
-        atr = self._atr(h=h, l=l, c=c, period=p.atr_period)
+        if external_atr is not None:
+            if external_atr.shape[0] != n:
+                raise ValueError(
+                    "external_atr debe tener la misma longitud que los datos del timeframe objetivo"
+                )
+            atr = external_atr
+        else:
+            atr = self._atr(h=h, l=l, c=c, period=p.atr_period)
 
         # 3) Pullback en ATR
         swing_high = self._rolling_max(h, p.max_pullback_bars)
@@ -275,21 +329,12 @@ class StrategyMicrostructureReversal:
         take_profit = np.full(n, np.nan, dtype=float)
         time_stop_bars = np.zeros(n, dtype=int)
 
-        swing_low_stop = self._rolling_min(l, p.structure_stop_lookback)
-        swing_high_stop = self._rolling_max(h, p.structure_stop_lookback)
-
         atr_entry = atr
-        sl_long = np.minimum(
-            c - p.atr_stop_mult * atr_entry,
-            swing_low_stop - p.structure_buffer_atr * atr_entry,
-        )
-        sl_short = np.maximum(
-            c + p.atr_stop_mult * atr_entry,
-            swing_high_stop + p.structure_buffer_atr * atr_entry,
-        )
+        sl_long = c - 0.8 * atr_entry
+        sl_short = c + 0.8 * atr_entry
 
-        tp_long = c + p.atr_tp_mult * atr_entry
-        tp_short = c - p.atr_tp_mult * atr_entry
+        tp_long = c + 1.2 * atr_entry
+        tp_short = c - 1.2 * atr_entry
 
         # Break-even tras movimiento a favor
         future_max_high = self._forward_rolling_max(h, p.breakeven_lookahead)
@@ -340,6 +385,9 @@ class StrategyMicrostructureReversal:
             "take_profit": take_profit.tolist(),
             "time_stop_bars": time_stop_bars.tolist(),
             "atr": atr.tolist(),
+            "atr_source": "external" if external_atr is not None else "local",
+            "atr_timeframe": p.atr_timeframe,
+            "atr_timeframe_period": p.atr_timeframe_period,
         }
 
         return StrategyResult(signals=signals, meta=meta_summary)
