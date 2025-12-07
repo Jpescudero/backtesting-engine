@@ -71,7 +71,13 @@ def filter_ohlcv_by_years(data: OHLCVArrays, years: Sequence[int]) -> OHLCVArray
     mask = np.isin(ts_years, target_years)
 
     if not mask.any():
-        raise ValueError(f"No hay barras para los años especificados: {years}")
+        available_years = np.unique(ts_years)
+        raise ValueError(
+            "No hay barras para los años especificados: "
+            f"{list(years)}. "
+            "Años disponibles en el feed: "
+            f"{available_years.tolist()}"
+        )
 
     return OHLCVArrays(
         ts=data.ts[mask],
