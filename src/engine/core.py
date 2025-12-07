@@ -286,6 +286,8 @@ def _backtest_with_risk(
     position = 0.0
     entry_price = 0.0
     entry_bar_idx = -1
+    stop_price = 0.0
+    tp_price = 0.0
 
     # Señales de la estrategia
     signals = _example_strategy_long_on_up_move(o, h, l, c, v, entry_threshold)
@@ -318,21 +320,33 @@ def _backtest_with_risk(
 
         # 1) Comprobar SL / TP / max_bars antes de nuevas señales
         if position > 0.0:
-            ret_from_entry = (price - entry_price) / entry_price
+            price_low = l[i]
+            price_high = h[i]
+            if not np.isfinite(price_low):
+                price_low = price
+            if not np.isfinite(price_high):
+                price_high = price
             bars_in_trade = i - entry_bar_idx
 
             reason = 0
+            exit_level = price
 
-            if ret_from_entry <= -sl_pct:
+            sl_hit = np.isfinite(price_low) and price_low <= stop_price
+            tp_hit = np.isfinite(price_high) and price_high >= tp_price
+
+            if sl_hit:
                 reason = 1  # SL
-            elif ret_from_entry >= tp_pct:
+                exit_level = stop_price
+            elif tp_hit:
                 reason = 2  # TP
+                exit_level = tp_price
             elif bars_in_trade >= max_bars_in_trade:
                 reason = 3  # Time stop
+                exit_level = price
 
             if reason != 0:
                 # Cerrar posición
-                trade_price = price - slippage
+                trade_price = exit_level - slippage
                 cash += trade_price * position
                 cash -= commission_per_trade
 
@@ -353,6 +367,8 @@ def _backtest_with_risk(
                 position = 0.0
                 entry_price = 0.0
                 entry_bar_idx = -1
+                stop_price = 0.0
+                tp_price = 0.0
 
         # 2) Procesar señal de la estrategia (compra/venta)
         sig = signals[i]
@@ -397,6 +413,8 @@ def _backtest_with_risk(
                 position = qty
                 entry_price = trade_price
                 entry_bar_idx = i
+                stop_price = trade_price * (1.0 - sl_pct)
+                tp_price = trade_price * (1.0 + tp_pct)
 
         # 3) Mark-to-market de la equity
         equity[i] = cash + position * price
@@ -618,27 +636,38 @@ def _backtest_with_risk_from_signals(
         # 1) Comprobar SL / TP / max_bars antes de nuevas señales
         if position > 0.0:
             bars_in_trade = i - entry_bar_idx
+            price_low = l[i]
+            price_high = h[i]
+            if not np.isfinite(price_low):
+                price_low = price
+            if not np.isfinite(price_high):
+                price_high = price
 
             reason = 0
+            exit_level = price
 
             if use_atr_stops:
-                if stop_price > 0.0 and price <= stop_price:
+                if stop_price > 0.0 and price_low <= stop_price:
                     reason = 1  # SL
-                elif tp_price > 0.0 and price >= tp_price:
+                    exit_level = stop_price
+                elif tp_price > 0.0 and price_high >= tp_price:
                     reason = 2  # TP
+                    exit_level = tp_price
             else:
-                ret_from_entry = (price - entry_price) / entry_price
-                if ret_from_entry <= -sl_pct:
+                if stop_price > 0.0 and price_low <= stop_price:
                     reason = 1  # SL
-                elif ret_from_entry >= tp_pct:
+                    exit_level = stop_price
+                elif tp_price > 0.0 and price_high >= tp_price:
                     reason = 2  # TP
+                    exit_level = tp_price
 
             if reason == 0 and bars_in_trade >= max_bars_in_trade:
                 reason = 3  # Time stop
+                exit_level = price
 
             if reason != 0:
                 # Cerrar posición
-                trade_price = price - slippage
+                trade_price = exit_level - slippage
                 cash += trade_price * position
                 cash -= commission_per_trade
 
@@ -689,6 +718,8 @@ def _backtest_with_risk_from_signals(
             position = 0.0
             entry_price = 0.0
             entry_bar_idx = -1
+            stop_price = 0.0
+            tp_price = 0.0
 
         # Señal de compra: abrir posición si estamos flat
         if sig == 1 and position == 0.0:
@@ -757,8 +788,8 @@ def _backtest_with_risk_from_signals(
                         tp_price = trade_price + atr_tp_mult * atr_val
                     use_atr_stops = stop_distance > 0.0
                 else:
-                    stop_price = 0.0
-                    tp_price = 0.0
+                    stop_price = trade_price * (1.0 - sl_pct) if sl_pct > 0.0 else 0.0
+                    tp_price = trade_price * (1.0 + tp_pct) if tp_pct > 0.0 else 0.0
                     use_atr_stops = False
 
         # 3) Mark-to-market de la equity
