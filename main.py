@@ -44,8 +44,12 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
                         help="Años de entrenamiento separados por comas, p.ej. 2019,2020")
     parser.add_argument("--test-years", type=str, default=None,
                         help="Años de test separados por comas, p.ej. 2021,2022")
-    parser.add_argument("--use-test-years", action="store_true",
-                        help="Si se marca, carga los años de test en lugar de los de train")
+    parser.add_argument(
+        "--use-test-years",
+        action="store_true",
+        default=None,
+        help="Si se marca, carga los años de test en lugar de los de train",
+    )
     parser.add_argument("--no-report-files", action="store_true", help="No generar Excel/JSON")
     parser.add_argument("--no-main-plots", action="store_true", help="No generar plots principales")
     parser.add_argument("--no-trade-plots", action="store_true", help="No generar plots de trades")

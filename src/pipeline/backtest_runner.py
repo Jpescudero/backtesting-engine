@@ -80,6 +80,8 @@ def run_single_backtest(config: BacktestRunConfig) -> BacktestArtifacts:
     timings: Dict[str, float] = {}
     reports_dir = config.reports_dir or (REPORTS_DIR / config.symbol).resolve()
 
+    logger.info("Capital inicial configurado: %s", config.backtest_config.initial_cash)
+
     with timed_step(timings, "01_datos_preparacion"):
         bars_csv_path, npz_path = prepare_npz_dataset(config.symbol, timeframe=config.timeframe)
     logger.info("CSV 1m listo: %s", bars_csv_path)
@@ -87,10 +89,15 @@ def run_single_backtest(config: BacktestRunConfig) -> BacktestArtifacts:
 
     with timed_step(timings, "02_carga_feed_npz"):
         feed = NPZOHLCVFeed(symbol=config.symbol, timeframe=config.timeframe)
-        if config.use_test_years and not config.test_years:
+
+        use_test_years = config.use_test_years or (
+            config.test_years is not None and not config.train_years
+        )
+
+        if use_test_years and not config.test_years:
             raise ValueError("'use_test_years' está a True pero no se han definido test_years")
 
-        if config.use_test_years and config.test_years:
+        if use_test_years:
             data = feed.load_years(config.test_years)
             logger.info("Usando años de prueba: %s", config.test_years)
         elif config.train_years:
