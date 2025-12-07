@@ -38,6 +38,21 @@ src\
       # GPS de rutas (PROJECT_ROOT, DATA_DIR, REPORTS_DIR, etc.)
       GitHub: https://github.com/Jpescudero/backtesting-engine/blob/main/src/config/paths.py
 
+  pipeline\
+    # Helpers de orquestación (preparación de datos, backtests y reporting)
+
+    data_pipeline.py
+      # Asegura que existan los artefactos ticks → CSV → NPZ
+      GitHub: https://github.com/Jpescudero/backtesting-engine/blob/main/src/pipeline/data_pipeline.py
+
+    backtest_runner.py
+      # Ejecuta estrategia + motor + reporting en una sola llamada
+      GitHub: https://github.com/Jpescudero/backtesting-engine/blob/main/src/pipeline/backtest_runner.py
+
+    reporting.py
+      # Helpers para exportar métricas, plots y ficheros finales
+      GitHub: https://github.com/Jpescudero/backtesting-engine/blob/main/src/pipeline/reporting.py
+
   data\
     # Todo lo relacionado con carga y transformación de datos
 
@@ -112,7 +127,22 @@ src\
       # Estrategia de "barrida" en apertura (9:00 y 15:00, hora Europa/Madrid)
       GitHub: https://github.com/Jpescudero/backtesting-engine/blob/main/src/strategies/barrida_apertura.py
 
+    microstructure_reversal.py
+      # Estrategia de reversión microestructural (pullbacks, break de estructura, etc.)
+      GitHub: https://github.com/Jpescudero/backtesting-engine/blob/main/src/strategies/microstructure_reversal.py
+
+    base.py
+      # Clases base y tipos comunes para estrategias
+      GitHub: https://github.com/Jpescudero/backtesting-engine/blob/main/src/strategies/base.py
+
     # GitHub (carpeta): https://github.com/Jpescudero/backtesting-engine/tree/main/src/strategies
+
+  utils\
+    # Utilidades compartidas
+
+    timing.py
+      # Context manager para medir tiempos y loggear duración
+      GitHub: https://github.com/Jpescudero/backtesting-engine/blob/main/src/utils/timing.py
 
   visualization\
     # En el futuro: dashboards, informes más complejos, etc.
