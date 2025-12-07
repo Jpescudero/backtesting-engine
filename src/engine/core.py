@@ -172,6 +172,63 @@ def _compute_risk_based_qty(
     return _clip_size(rounded_qty, min_trade_size, max_trade_size)
 
 
+@njit
+def compute_position_size(
+    equity: float,
+    entry_price: float,
+    stop_loss: float,
+    take_profit: float,
+    risk_pct: float = 0.01,
+    point_value: float = 1.0,
+    rr_ref: float = 1.5,
+    min_scale: float = 0.5,
+    max_scale: float = 1.5,
+) -> int:
+    """
+    Calcula el tamaño dinámico de la posición (número de contratos)
+    respetando un riesgo máximo al SL y ajustando por la relación TP/SL.
+
+    Devuelve un entero >= 0.
+    """
+
+    if (
+        not np.isfinite(equity)
+        or not np.isfinite(entry_price)
+        or not np.isfinite(stop_loss)
+        or not np.isfinite(take_profit)
+        or risk_pct <= 0.0
+        or point_value <= 0.0
+    ):
+        return 0
+
+    # Distancias en puntos
+    sl_dist = np.abs(entry_price - stop_loss)
+    tp_dist = np.abs(take_profit - entry_price)
+
+    # SL inválido => no operamos
+    if sl_dist <= 0.0:
+        return 0
+
+    # Riesgo máximo monetario permitido
+    risk_cash = equity * risk_pct
+
+    # Tamaño base limitado por el SL
+    units_base = risk_cash / (sl_dist * point_value)
+    if units_base <= 0.0:
+        return 0
+
+    # Ratio beneficio/riesgo teórico
+    rr = tp_dist / sl_dist
+
+    # Factor de escala según la distancia al TP
+    scale = rr / rr_ref
+    scale = max(min_scale, min(max_scale, scale))
+
+    # Tamaño final entero y no negativo
+    units = int(np.floor(units_base * scale))
+    return max(units, 0)
+
+
 # =====================
 # Motor de backtest con SL/TP & duración (Numba)
 # =====================
@@ -465,6 +522,8 @@ def _backtest_with_risk_from_signals(
     c: np.ndarray,
     v: np.ndarray,
     signals: np.ndarray,
+    stop_losses: np.ndarray,
+    take_profits: np.ndarray,
     position_sizes: np.ndarray,
     atr: np.ndarray,
     initial_cash: float,
@@ -628,9 +687,26 @@ def _backtest_with_risk_from_signals(
             atr_val = atr[i] if i < atr.shape[0] else np.nan
             has_atr = np.isfinite(atr_val)
 
+            sl_price = stop_losses[i] if i < stop_losses.shape[0] else np.nan
+            tp_price_candidate = take_profits[i] if i < take_profits.shape[0] else np.nan
+            has_custom_stops = np.isfinite(sl_price) and np.isfinite(tp_price_candidate)
+
             desired_qty = position_sizes[i] if np.isfinite(position_sizes[i]) else trade_size
 
-            if risk_per_trade_pct > 0.0 and has_atr and atr_stop_mult > 0.0 and desired_qty <= 0.0:
+            if has_custom_stops:
+                current_equity = cash + position * price
+                risk_param = risk_per_trade_pct if risk_per_trade_pct > 0.0 else 0.01
+                risk_qty = compute_position_size(
+                    equity=current_equity,
+                    entry_price=trade_price,
+                    stop_loss=sl_price,
+                    take_profit=tp_price_candidate,
+                    risk_pct=risk_param,
+                    point_value=point_value,
+                )
+                if risk_qty > 0:
+                    desired_qty = float(risk_qty)
+            elif risk_per_trade_pct > 0.0 and has_atr and atr_stop_mult > 0.0 and desired_qty <= 0.0:
                 current_equity = cash + position * price
                 risk_qty = _compute_risk_based_qty(
                     equity=current_equity,
@@ -660,7 +736,11 @@ def _backtest_with_risk_from_signals(
                 entry_price = trade_price
                 entry_bar_idx = i
 
-                if has_atr and atr_stop_mult > 0.0:
+                if has_custom_stops:
+                    stop_price = sl_price
+                    tp_price = tp_price_candidate
+                    use_atr_stops = True
+                elif has_atr and atr_stop_mult > 0.0:
                     stop_distance = atr_stop_mult * atr_val
                     stop_price = trade_price - stop_distance
                     tp_price = 0.0
@@ -700,6 +780,8 @@ def run_backtest_with_signals(
     signals: np.ndarray,
     position_sizes: np.ndarray | None = None,
     atr: np.ndarray | None = None,
+    stop_losses: np.ndarray | None = None,
+    take_profits: np.ndarray | None = None,
     config: BacktestConfig | None = None,
 ) -> BacktestResult:
     """
@@ -733,6 +815,22 @@ def run_backtest_with_signals(
             f"El tamaño de atr ({atr.shape[0]}) no coincide con el número de barras ({data.c.shape[0]})."
         )
 
+    if stop_losses is None:
+        stop_losses = np.full_like(data.c, np.nan, dtype=float)
+    elif stop_losses.shape[0] != data.c.shape[0]:
+        raise ValueError(
+            f"El tamaño de stop_losses ({stop_losses.shape[0]}) no coincide con el número de barras ({data.c.shape[0]})."
+        )
+    stop_losses = np.asarray(stop_losses, dtype=np.float64)
+
+    if take_profits is None:
+        take_profits = np.full_like(data.c, np.nan, dtype=float)
+    elif take_profits.shape[0] != data.c.shape[0]:
+        raise ValueError(
+            f"El tamaño de take_profits ({take_profits.shape[0]}) no coincide con el número de barras ({data.c.shape[0]})."
+        )
+    take_profits = np.asarray(take_profits, dtype=np.float64)
+
     (
         equity,
         cash,
@@ -754,6 +852,8 @@ def run_backtest_with_signals(
         c=data.c,
         v=data.v,
         signals=signals.astype(np.int8),
+        stop_losses=stop_losses,
+        take_profits=take_profits,
         position_sizes=position_sizes,
         atr=atr,
         initial_cash=config.initial_cash,
