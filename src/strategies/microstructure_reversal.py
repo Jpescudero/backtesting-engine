@@ -126,12 +126,23 @@ class StrategyMicrostructureReversal:
         l = np.asarray(data.l)
         c = np.asarray(data.c)
         v = np.asarray(data.v)
+        ts = np.asarray(data.ts)
 
         n = len(c)
         if n == 0:
             return StrategyResult(signals=np.zeros(0, dtype=np.int8), meta={"n_entries": 0})
 
         p = self.params
+
+        # Ventanas horarias (Europe/Madrid con horario de verano/invierno automático)
+        idx_local = pd.to_datetime(ts, utc=True).tz_convert("Europe/Madrid")
+        minutes_in_day = idx_local.hour * 60 + idx_local.minute
+        session_mask = (
+            ((minutes_in_day >= 8 * 60 + 50) & (minutes_in_day <= 10 * 60))
+            | ((minutes_in_day >= 15 * 60 + 20) & (minutes_in_day <= 16 * 60 + 30))
+        )
+
+        day_index = idx_local.normalize()
 
         # 1) Tendencia
         ema_short = self._ema(c, p.ema_short)
@@ -218,6 +229,43 @@ class StrategyMicrostructureReversal:
         entries_long = shift_long & prev_exhaustion_long & high_activity_mask
         entries_short = shift_short & prev_exhaustion_short & high_activity_mask
 
+        # 6b) Filtro de régimen de volatilidad: evitar extremos intradía
+        atr_series = pd.Series(atr)
+        atr_intraday_median = atr_series.groupby(day_index).transform("median")
+        atr_filter = np.isfinite(atr) & np.isfinite(atr_intraday_median)
+        atr_filter &= atr <= 1.8 * atr_intraday_median.to_numpy()
+
+        vol_series = pd.Series(v, dtype=float)
+        vol_q30 = vol_series.groupby(day_index).transform(lambda x: x.quantile(0.30))
+        vol_q95 = vol_series.groupby(day_index).transform(lambda x: x.quantile(0.95))
+        vol_filter = (vol_series >= vol_q30) & (vol_series <= vol_q95)
+
+        entries_long &= session_mask & atr_filter & vol_filter.to_numpy()
+        entries_short = np.zeros_like(entries_short, dtype=bool)
+
+        # Limitar a 2 trades por día y evitar solapamiento de posiciones
+        entries_filtered = np.zeros_like(entries_long, dtype=bool)
+        flat_until = -1
+        daily_counts: Dict[pd.Timestamp.date, int] = {}
+
+        for i, is_entry in enumerate(entries_long):
+            if not is_entry:
+                continue
+
+            if i <= flat_until:
+                continue
+
+            day = idx_local[i].date()
+            count_today = daily_counts.get(day, 0)
+            if count_today >= 2:
+                continue
+
+            entries_filtered[i] = True
+            daily_counts[day] = count_today + 1
+            flat_until = i + p.max_holding_bars - 1
+
+        entries_long = entries_filtered
+
         signals = np.zeros(n, dtype=np.int8)
         signals[entries_long] = 1
         signals[entries_short] = -1
@@ -279,8 +327,15 @@ class StrategyMicrostructureReversal:
             "structure_break_long": structure_break_long.tolist(),
             "structure_break_short": structure_break_short.tolist(),
             "high_activity_mask": high_activity_mask.tolist(),
+            "atr_intraday_median": atr_intraday_median.tolist(),
+            "atr_filter": atr_filter.tolist(),
+            "vol_q30": vol_q30.tolist(),
+            "vol_q95": vol_q95.tolist(),
+            "vol_filter": vol_filter.tolist(),
+            "session_mask": session_mask.tolist(),
             "entries_long": entries_long.tolist(),
             "entries_short": entries_short.tolist(),
+            "daily_entry_counts": {str(day): count for day, count in daily_counts.items()},
             "initial_stop_loss": initial_stop_loss.tolist(),
             "take_profit": take_profit.tolist(),
             "time_stop_bars": time_stop_bars.tolist(),
