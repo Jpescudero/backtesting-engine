@@ -439,6 +439,12 @@ def run_backtest_basic(
     # pasa un array vacío (NaN) para desactivar ese camino.
     position_sizes = np.full_like(data.c, np.nan, dtype=float)
 
+    # No se usan stops personalizados en este modo básico, pero guardamos arrays
+    # de NaN para mantener la interfaz uniforme con los pipelines que sí
+    # proporcionan SL/TP por barra.
+    stop_losses = np.full_like(data.c, np.nan, dtype=float)
+    take_profits = np.full_like(data.c, np.nan, dtype=float)
+
     (
         equity,
         cash,
@@ -903,6 +909,9 @@ def run_backtest_with_signals(
         "max_bars_in_trade": config.max_bars_in_trade,
         "entry_threshold": config.entry_threshold,
         "n_trades": trade_count,
+        # Guardamos SL/TP iniciales para poder plotearlos después
+        "stop_losses": stop_losses,
+        "take_profits": take_profits,
     }
 
     return BacktestResult(
