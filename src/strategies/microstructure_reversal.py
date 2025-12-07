@@ -146,9 +146,6 @@ class StrategyMicrostructureReversal:
         """
         Calcula un ATR en un timeframe inferior (por ejemplo 1m) y lo reindexa
         a los timestamps del dataframe objetivo.
-
-        Esto permite usar SL/TP basados en la microestructura, evitando ATR
-        inflados por gaps o rangos amplios del timeframe de backtest.
         """
 
         atr_lower = self._atr(

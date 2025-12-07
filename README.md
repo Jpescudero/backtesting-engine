@@ -128,7 +128,10 @@ Implemented in `src/engine/core.py`. Key features:
 - Returns a structured `BacktestResult` with cash, position, equity curve, trade logs, and metadata.
 
 ```python
+import numpy as np
+
 from src.engine.core import BacktestConfig, run_backtest_with_signals
+from src.utils import compute_position_size
 
 config = BacktestConfig(
     initial_cash=100_000,
@@ -141,6 +144,29 @@ config = BacktestConfig(
 )
 
 result = run_backtest_with_signals(data, signals, config)
+```
+
+To run strategies with their own risk parameters, pre-compute position sizes per bar and
+feed them into the engine. This keeps SL/TP logic under the strategy while reusing the
+common executor:
+
+```python
+sizes = np.array(
+    [
+        compute_position_size(
+            equity=current_equity[i],
+            entry_price=entries[i],
+            stop_loss=stops[i],
+            take_profit=tps[i],
+            risk_pct=0.0075,
+            point_value=1.0,
+        )
+        for i in range(len(signals))
+    ],
+    dtype=float,
+)
+
+result = run_backtest_with_signals(data, signals, position_sizes=sizes, config=config)
 ```
 
 ### 2.5 Analytics, reporting & visualization
