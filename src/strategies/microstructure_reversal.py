@@ -207,7 +207,7 @@ class StrategyMicrostructureReversal:
             "exhaustion_mask": exhaustion_mask,
             "shift_mask": shift_mask,
             "structure_break": structure_break,
-            "params": asdict(p),
+            "params": p,
         }
 
         return StrategyResult(signals=signals, meta=meta)
