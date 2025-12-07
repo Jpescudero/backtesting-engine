@@ -184,6 +184,7 @@ def _backtest_with_risk(
     l: np.ndarray,
     c: np.ndarray,
     v: np.ndarray,
+    position_sizes: np.ndarray,
     initial_cash: float,
     commission_per_trade: float,
     trade_size: float,
@@ -212,6 +213,7 @@ def _backtest_with_risk(
       - Estrategia simple (_example_strategy_long_on_up_move).
       - SL / TP en % desde precio de entrada.
       - Máxima duración del trade.
+      - Tamaño dinámico opcional por barra (position_sizes).
       - Registro de trades.
 
     exit_reason:
@@ -376,6 +378,10 @@ def run_backtest_basic(
     if config is None:
         config = BacktestConfig()
 
+    # Estrategia interna: no se calculan tamaños dinámicos, por lo que se
+    # pasa un array vacío (NaN) para desactivar ese camino.
+    position_sizes = np.full_like(data.c, np.nan, dtype=float)
+
     (
         equity,
         cash,
@@ -396,6 +402,7 @@ def run_backtest_basic(
         l=data.l,
         c=data.c,
         v=data.v,
+        position_sizes=position_sizes,
         initial_cash=config.initial_cash,
         commission_per_trade=config.commission_per_trade,
         trade_size=config.trade_size,
@@ -458,6 +465,7 @@ def _backtest_with_risk_from_signals(
     c: np.ndarray,
     v: np.ndarray,
     signals: np.ndarray,
+    position_sizes: np.ndarray,
     atr: np.ndarray,
     initial_cash: float,
     commission_per_trade: float,
@@ -494,6 +502,7 @@ def _backtest_with_risk_from_signals(
           +1 -> señal de compra/entrada larga
           -1 -> cierre por señal contraria
            0 -> nada
+      - position_sizes: tamaño deseado por barra (NaN/<=0 activa los parámetros clásicos)
 
     exit_reason:
       1 -> Stop Loss
@@ -619,8 +628,9 @@ def _backtest_with_risk_from_signals(
             atr_val = atr[i] if i < atr.shape[0] else np.nan
             has_atr = np.isfinite(atr_val)
 
-            desired_qty = trade_size
-            if risk_per_trade_pct > 0.0 and has_atr and atr_stop_mult > 0.0:
+            desired_qty = position_sizes[i] if np.isfinite(position_sizes[i]) else trade_size
+
+            if risk_per_trade_pct > 0.0 and has_atr and atr_stop_mult > 0.0 and desired_qty <= 0.0:
                 current_equity = cash + position * price
                 risk_qty = _compute_risk_based_qty(
                     equity=current_equity,
@@ -631,7 +641,7 @@ def _backtest_with_risk_from_signals(
                     min_trade_size=min_trade_size,
                     max_trade_size=max_trade_size,
                 )
-                if risk_qty > 0.0:
+                if risk_qty > 0.0 and desired_qty <= 0.0:
                     desired_qty = risk_qty
 
             desired_qty = _clip_size(desired_qty, min_trade_size, max_trade_size)
@@ -688,6 +698,7 @@ def _backtest_with_risk_from_signals(
 def run_backtest_with_signals(
     data: OHLCVArrays,
     signals: np.ndarray,
+    position_sizes: np.ndarray | None = None,
     atr: np.ndarray | None = None,
     config: BacktestConfig | None = None,
 ) -> BacktestResult:
@@ -697,6 +708,7 @@ def run_backtest_with_signals(
     Es igual que run_backtest_basic, pero:
       - No calcula la estrategia dentro del motor.
       - Usa las señales proporcionadas.
+      - Permite tamaños dinámicos por barra (position_sizes) calculados por la estrategia.
     """
     if config is None:
         config = BacktestConfig()
@@ -705,6 +717,14 @@ def run_backtest_with_signals(
         raise ValueError(
             f"El tamaño de signals ({signals.shape[0]}) no coincide con el número de barras ({data.c.shape[0]})."
         )
+
+    if position_sizes is None:
+        position_sizes = np.full_like(data.c, np.nan, dtype=float)
+    elif position_sizes.shape[0] != data.c.shape[0]:
+        raise ValueError(
+            f"El tamaño de position_sizes ({position_sizes.shape[0]}) no coincide con el número de barras ({data.c.shape[0]})."
+        )
+    position_sizes = np.asarray(position_sizes, dtype=np.float64)
 
     if atr is None:
         atr = np.full_like(data.c, np.nan, dtype=float)
@@ -734,6 +754,7 @@ def run_backtest_with_signals(
         c=data.c,
         v=data.v,
         signals=signals.astype(np.int8),
+        position_sizes=position_sizes,
         atr=atr,
         initial_cash=config.initial_cash,
         commission_per_trade=config.commission_per_trade,
