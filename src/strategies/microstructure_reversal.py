@@ -37,8 +37,8 @@ class MicrostructureParams:
     volume_period: int = 20
     min_rvol: float = 1.0
 
-    atr_stop_mult: float = 0.35
-    atr_tp_mult: float = 0.7
+    atr_stop_mult: float = 1.2
+    atr_tp_mult: float = 2.2
     structure_buffer_atr: float = 0.2
     structure_stop_lookback: int = 6
 
@@ -88,11 +88,16 @@ class StrategyMicrostructureReversal:
             tr[i] = max(high_low, high_close_prev, low_close_prev)
 
         atr = np.full(n, np.nan, dtype=float)
-        if n >= period:
-            atr[period - 1] = tr[:period].mean()
-            alpha = 1.0 / period
-            for i in range(period, n):
-                atr[i] = (1 - alpha) * atr[i - 1] + alpha * tr[i]
+        if period <= 0:
+            return atr
+
+        alpha = 2.0 / (period + 1)
+        for i in range(period - 1, n):
+            window_tr = tr[i - period + 1 : i + 1]
+            ema = window_tr[0]
+            for val in window_tr[1:]:
+                ema = alpha * val + (1 - alpha) * ema
+            atr[i] = ema
 
         return atr
 
