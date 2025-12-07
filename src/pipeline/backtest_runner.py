@@ -183,13 +183,14 @@ def run_single_backtest(config: BacktestRunConfig) -> BacktestArtifacts:
 
     if config.generate_trade_plots:
         with timed_step(timings, "09_plots_mejores_peores_trades"):
-            trade_plot_path = generate_trade_plots(
+            best_path, worst_path = generate_trade_plots(
                 trades_df=trades_df,
                 data=data,
                 reports_dir=reports_dir,
                 show=not config.headless,
             )
-        report_paths.trade_plot_path = trade_plot_path
+        report_paths.best_trade_plot_path = best_path
+        report_paths.worst_trade_plot_path = worst_path
     else:
         timings["09_plots_mejores_peores_trades"] = 0.0
 

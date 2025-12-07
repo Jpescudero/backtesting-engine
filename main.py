@@ -341,7 +341,14 @@ def main(argv: Iterable[str] | None = None) -> None:
     if run_config.generate_main_plots:
         print(f"Plot equity/trades: {_describe_artifact(artifacts.reports.equity_path)}")
     if run_config.generate_trade_plots:
-        print(f"Plot mejores/peores trades: {_describe_artifact(artifacts.reports.trade_plot_path)}")
+        print(
+            "Plot mejores trades: "
+            f"{_describe_artifact(artifacts.reports.best_trade_plot_path)}"
+        )
+        print(
+            "Plot peores trades: "
+            f"{_describe_artifact(artifacts.reports.worst_trade_plot_path)}"
+        )
 
     print_timings(artifacts.timings)
 
