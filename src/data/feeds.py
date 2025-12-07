@@ -59,6 +59,17 @@ def _concat_ohlcv_arrays(arrays_list: List[OHLCVArrays]) -> OHLCVArrays:
     return OHLCVArrays(ts=ts, o=o, h=h, l=l, c=c, v=v)
 
 
+def _extract_years_from_timestamps(ts: np.ndarray) -> np.ndarray:
+    """Devuelve un array de años a partir de timestamps enteros o datetime64."""
+
+    dt64 = np.asarray(ts)
+
+    if not np.issubdtype(dt64.dtype, np.datetime64):
+        dt64 = dt64.astype("datetime64[ns]")
+
+    return dt64.astype("datetime64[Y]").astype(np.int64) + 1970
+
+
 def filter_ohlcv_by_years(data: OHLCVArrays, years: Sequence[int]) -> OHLCVArrays:
     """
     Filtra un OHLCVArrays quedándose sólo con las barras de los años indicados.
@@ -66,7 +77,7 @@ def filter_ohlcv_by_years(data: OHLCVArrays, years: Sequence[int]) -> OHLCVArray
     if not years:
         raise ValueError("Debe proporcionarse al menos un año para filtrar los datos")
 
-    ts_years = data.ts.astype("datetime64[Y]").astype(np.int64) + 1970
+    ts_years = _extract_years_from_timestamps(data.ts)
     target_years = np.array(list(years), dtype=np.int64)
     mask = np.isin(ts_years, target_years)
 
