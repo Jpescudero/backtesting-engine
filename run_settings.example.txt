@@ -1,6 +1,6 @@
 # Configuración de backtest (formato key=value)
 # Puedes copiar este archivo y ajustar los valores que necesites.
-initial_cash=75000
+initial_cash=2000
 train_years=2019,2020,2021
 test_years=2022,2023
 use_test_years=False
