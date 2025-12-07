@@ -34,13 +34,13 @@ class StrategyParams:
     atr_period: int = 20
     atr_timeframe: Optional[str] = "1m"
     atr_timeframe_period: int = 10
-    min_pullback_atr: float = 0.4
-    max_pullback_atr: float = 1.1
-    max_pullback_bars: int = 8
-    exhaustion_close_min: float = 0.4
-    exhaustion_close_max: float = 0.6
-    exhaustion_body_max_ratio: float = 0.4
-    shift_body_atr: float = 0.6
+    min_pullback_atr: float = 0.3
+    max_pullback_atr: float = 1.3
+    max_pullback_bars: int = 12
+    exhaustion_close_min: float = 0.35
+    exhaustion_close_max: float = 0.65
+    exhaustion_body_max_ratio: float = 0.5
+    shift_body_atr: float = 0.45
     structure_break_lookback: int = 3
 
 

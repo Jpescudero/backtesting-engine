@@ -111,9 +111,9 @@ strategy = StrategyMicrostructureReversal(
     ema_short=20,
     ema_long=50,
     atr_period=20,
-    min_pullback_atr=0.4,
-    max_pullback_atr=1.1,
-    max_pullback_bars=8,
+    min_pullback_atr=0.3,
+    max_pullback_atr=1.3,
+    max_pullback_bars=12,
 )
 
 signals = strategy.generate_signals(data).signals
@@ -200,7 +200,7 @@ Example CLI run:
 
 ```bash
 python main.py --symbol NDXm --timeframe 1m --ema-short 20 --ema-long 50 \
-  --atr-period 20 --min-pullback-atr 0.4 --max-pullback-atr 1.1 --max-pullback-bars 8 \
+  --atr-period 20 --min-pullback-atr 0.3 --max-pullback-atr 1.3 --max-pullback-bars 12 \
   --sl-pct 0.01 --tp-pct 0.02 --commission 1.0 --slippage 0.0 --trade-size 1.0 \
   --train-years 2019,2020 --test-years 2021,2022 --headless
 ```

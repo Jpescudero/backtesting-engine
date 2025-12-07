@@ -42,13 +42,13 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         default=10,
         help="Periodo ATR a usar en el timeframe dedicado",
     )
-    parser.add_argument("--min-pullback-atr", type=float, default=0.4, help="Retroceso mínimo en ATR")
-    parser.add_argument("--max-pullback-atr", type=float, default=1.1, help="Retroceso máximo en ATR")
-    parser.add_argument("--max-pullback-bars", type=int, default=8, help="Velas máximas del pullback")
-    parser.add_argument("--exhaustion-close-min", type=float, default=0.4, help="Posición mínima del cierre de la vela de agotamiento")
-    parser.add_argument("--exhaustion-close-max", type=float, default=0.6, help="Posición máxima del cierre de la vela de agotamiento")
-    parser.add_argument("--exhaustion-body-max-ratio", type=float, default=0.4, help="Relación máxima cuerpo/rango para la vela de agotamiento")
-    parser.add_argument("--shift-body-atr", type=float, default=0.6, help="Mínimo cuerpo de la vela shift en ATR")
+    parser.add_argument("--min-pullback-atr", type=float, default=0.3, help="Retroceso mínimo en ATR")
+    parser.add_argument("--max-pullback-atr", type=float, default=1.3, help="Retroceso máximo en ATR")
+    parser.add_argument("--max-pullback-bars", type=int, default=12, help="Velas máximas del pullback")
+    parser.add_argument("--exhaustion-close-min", type=float, default=0.35, help="Posición mínima del cierre de la vela de agotamiento")
+    parser.add_argument("--exhaustion-close-max", type=float, default=0.65, help="Posición máxima del cierre de la vela de agotamiento")
+    parser.add_argument("--exhaustion-body-max-ratio", type=float, default=0.5, help="Relación máxima cuerpo/rango para la vela de agotamiento")
+    parser.add_argument("--shift-body-atr", type=float, default=0.45, help="Mínimo cuerpo de la vela shift en ATR")
     parser.add_argument("--structure-break-lookback", type=int, default=3, help="Ventana de ruptura de microestructura")
     parser.add_argument("--config-file", type=str, default=None,
                         help="Ruta a archivo de configuración simple key=value")

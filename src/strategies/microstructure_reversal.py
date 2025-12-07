@@ -25,19 +25,22 @@ class MicrostructureParams:
     atr_timeframe: Optional[str] = "1m"
     atr_timeframe_period: int = 10
 
-    min_pullback_atr: float = 0.4
-    max_pullback_atr: float = 1.1
-    max_pullback_bars: int = 8
+    min_pullback_atr: float = 0.3
+    max_pullback_atr: float = 1.3
+    max_pullback_bars: int = 12
 
-    exhaustion_close_min: float = 0.4
-    exhaustion_close_max: float = 0.6
-    exhaustion_body_max_ratio: float = 0.4
+    exhaustion_close_min: float = 0.35
+    exhaustion_close_max: float = 0.65
+    exhaustion_body_max_ratio: float = 0.5
 
-    shift_body_atr: float = 0.6
+    shift_body_atr: float = 0.45
     structure_break_lookback: int = 3
 
     volume_period: int = 20
-    min_rvol: float = 1.0
+    min_rvol: float = 0.8
+
+    vol_percentile_low: float = 0.20
+    vol_percentile_high: float = 0.98
 
     atr_stop_mult: float = 1.2
     atr_tp_mult: float = 2.2
@@ -284,12 +287,12 @@ class StrategyMicrostructureReversal:
         atr_series = pd.Series(atr)
         atr_intraday_median = atr_series.groupby(day_index).transform("median")
         atr_filter = np.isfinite(atr) & np.isfinite(atr_intraday_median)
-        atr_filter &= atr <= 1.8 * atr_intraday_median.to_numpy()
+        atr_filter &= atr <= 2.3 * atr_intraday_median.to_numpy()
 
         vol_series = pd.Series(v, dtype=float)
-        vol_q30 = vol_series.groupby(day_index).transform(lambda x: x.quantile(0.30))
-        vol_q95 = vol_series.groupby(day_index).transform(lambda x: x.quantile(0.95))
-        vol_filter = (vol_series >= vol_q30) & (vol_series <= vol_q95)
+        vol_q_low = vol_series.groupby(day_index).transform(lambda x: x.quantile(p.vol_percentile_low))
+        vol_q_high = vol_series.groupby(day_index).transform(lambda x: x.quantile(p.vol_percentile_high))
+        vol_filter = (vol_series >= vol_q_low) & (vol_series <= vol_q_high)
 
         entries_long &= session_mask & atr_filter & vol_filter.to_numpy()
         entries_short = np.zeros_like(entries_short, dtype=bool)
@@ -371,8 +374,8 @@ class StrategyMicrostructureReversal:
             "high_activity_mask": high_activity_mask.tolist(),
             "atr_intraday_median": atr_intraday_median.tolist(),
             "atr_filter": atr_filter.tolist(),
-            "vol_q30": vol_q30.tolist(),
-            "vol_q95": vol_q95.tolist(),
+            "vol_q_low": vol_q_low.tolist(),
+            "vol_q_high": vol_q_high.tolist(),
             "vol_filter": vol_filter.tolist(),
             "session_mask": session_mask.tolist(),
             "entries_long": entries_long.tolist(),
