@@ -63,6 +63,8 @@ def trades_to_dataframe(
 
     stop_losses = result.extra.get("stop_losses") if result.extra else None
     take_profits = result.extra.get("take_profits") if result.extra else None
+    sl_pct = float(result.extra.get("sl_pct", np.nan)) if result.extra else np.nan
+    tp_pct = float(result.extra.get("tp_pct", np.nan)) if result.extra else np.nan
 
     if isinstance(stop_losses, np.ndarray) and stop_losses.shape[0] == data.c.shape[0]:
         df["stop_loss"] = stop_losses[entry_idx]
@@ -73,6 +75,21 @@ def trades_to_dataframe(
         df["take_profit"] = take_profits[entry_idx]
     else:
         df["take_profit"] = np.nan
+
+    # Si no hay SL/TP explícitos, derivamos los niveles desde el % configurado
+    side = np.sign(df["qty"]).replace(0, 1.0)
+    if df["stop_loss"].isna().any() and np.isfinite(sl_pct):
+        df.loc[df["stop_loss"].isna(), "stop_loss"] = df.loc[
+            df["stop_loss"].isna(), "entry_price"
+        ] * (1.0 - sl_pct * side[df["stop_loss"].isna()])
+
+    if df["take_profit"].isna().any() and np.isfinite(tp_pct):
+        df.loc[df["take_profit"].isna(), "take_profit"] = df.loc[
+            df["take_profit"].isna(), "entry_price"
+        ] * (1.0 + tp_pct * side[df["take_profit"].isna()])
+
+    df["sl_pct"] = sl_pct
+    df["tp_pct"] = tp_pct
 
     # Mapear códigos a texto
     reason_map = {
