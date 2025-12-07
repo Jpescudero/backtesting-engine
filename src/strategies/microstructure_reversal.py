@@ -76,17 +76,17 @@ class StrategyMicrostructureReversal:
         return pd.Series(series).ewm(span=span, adjust=False).mean().to_numpy()
 
     @staticmethod
-    def _atr(h: np.ndarray, l: np.ndarray, c: np.ndarray, period: int) -> np.ndarray:
+    def _atr(h: np.ndarray, low: np.ndarray, c: np.ndarray, period: int) -> np.ndarray:
         n = len(c)
         if n == 0:
             return np.zeros(0, dtype=float)
 
         tr = np.empty(n, dtype=float)
-        tr[0] = h[0] - l[0]
+        tr[0] = h[0] - low[0]
         for i in range(1, n):
-            high_low = h[i] - l[i]
+            high_low = h[i] - low[i]
             high_close_prev = abs(h[i] - c[i - 1])
-            low_close_prev = abs(l[i] - c[i - 1])
+            low_close_prev = abs(low[i] - c[i - 1])
             tr[i] = max(high_low, high_close_prev, low_close_prev)
 
         atr = np.full(n, np.nan, dtype=float)
@@ -150,7 +150,7 @@ class StrategyMicrostructureReversal:
 
         atr_lower = self._atr(
             h=np.asarray(lower_data.h),
-            l=np.asarray(lower_data.l),
+            low=np.asarray(lower_data.low),
             c=np.asarray(lower_data.c),
             period=self.params.atr_timeframe_period,
         )
@@ -167,7 +167,7 @@ class StrategyMicrostructureReversal:
     ) -> StrategyResult:
         o = np.asarray(data.o)
         h = np.asarray(data.h)
-        l = np.asarray(data.l)
+        low = np.asarray(data.low)
         c = np.asarray(data.c)
         v = np.asarray(data.v)
         ts = np.asarray(data.ts)
@@ -202,11 +202,11 @@ class StrategyMicrostructureReversal:
                 )
             atr = external_atr
         else:
-            atr = self._atr(h=h, l=l, c=c, period=p.atr_period)
+            atr = self._atr(h=h, low=low, c=c, period=p.atr_period)
 
         # 3) Pullback en ATR
         swing_high = self._rolling_max(h, p.max_pullback_bars)
-        swing_low = self._rolling_min(l, p.max_pullback_bars)
+        swing_low = self._rolling_min(low, p.max_pullback_bars)
 
         with np.errstate(divide="ignore", invalid="ignore"):
             pullback_atr_long = (swing_high - c) / atr
@@ -226,10 +226,10 @@ class StrategyMicrostructureReversal:
         )
 
         # 4) Exhaustion candle (vela previa al shift)
-        range_ = h - l
+        range_ = h - low
         body = np.abs(c - o)
         tiny = 1e-12
-        close_pos_from_low = (c - l) / np.maximum(range_, tiny)
+        close_pos_from_low = (c - low) / np.maximum(range_, tiny)
         close_pos_from_high = (h - c) / np.maximum(range_, tiny)
         body_ratio = body / np.maximum(range_, tiny)
 
@@ -255,9 +255,9 @@ class StrategyMicrostructureReversal:
         shift_short = (body_signed < 0) & (body >= p.shift_body_atr * atr)
 
         prev_max_high = pd.Series(h).rolling(p.structure_break_lookback, min_periods=1).max().shift(1)
-        prev_min_low = pd.Series(l).rolling(p.structure_break_lookback, min_periods=1).min().shift(1)
+        prev_min_low = pd.Series(low).rolling(p.structure_break_lookback, min_periods=1).min().shift(1)
         prev_max_high.iloc[0] = h[0]
-        prev_min_low.iloc[0] = l[0]
+        prev_min_low.iloc[0] = low[0]
 
         structure_break_long = c > prev_max_high.to_numpy()
         structure_break_short = c < prev_min_low.to_numpy()
@@ -335,7 +335,7 @@ class StrategyMicrostructureReversal:
 
         # Break-even tras movimiento a favor
         future_max_high = self._forward_rolling_max(h, p.breakeven_lookahead)
-        future_min_low = self._forward_rolling_min(l, p.breakeven_lookahead)
+        future_min_low = self._forward_rolling_min(low, p.breakeven_lookahead)
 
         mfe_long = future_max_high - c
         mfe_short = c - future_min_low

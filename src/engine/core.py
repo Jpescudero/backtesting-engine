@@ -60,7 +60,7 @@ class BacktestResult:
 def _example_strategy_long_on_up_move(
     o: np.ndarray,
     h: np.ndarray,
-    l: np.ndarray,
+    low: np.ndarray,
     c: np.ndarray,
     v: np.ndarray,
     entry_threshold: float,
@@ -238,7 +238,7 @@ def _backtest_with_risk(
     ts: np.ndarray,
     o: np.ndarray,
     h: np.ndarray,
-    l: np.ndarray,
+    low: np.ndarray,
     c: np.ndarray,
     v: np.ndarray,
     position_sizes: np.ndarray,
@@ -290,7 +290,7 @@ def _backtest_with_risk(
     tp_price = 0.0
 
     # Señales de la estrategia
-    signals = _example_strategy_long_on_up_move(o, h, l, c, v, entry_threshold)
+    signals = _example_strategy_long_on_up_move(o, h, low, c, v, entry_threshold)
 
     # Prealocación para el log de trades
     max_trades = n // 2 + 1
@@ -320,7 +320,7 @@ def _backtest_with_risk(
 
         # 1) Comprobar SL / TP / max_bars antes de nuevas señales
         if position > 0.0:
-            price_low = l[i]
+            price_low = low[i]
             price_high = h[i]
             if not np.isfinite(price_low):
                 price_low = price
@@ -480,7 +480,7 @@ def run_backtest_basic(
         ts=data.ts,
         o=data.o,
         h=data.h,
-        l=data.l,
+        low=data.low,
         c=data.c,
         v=data.v,
         position_sizes=position_sizes,
@@ -545,7 +545,7 @@ def _backtest_with_risk_from_signals(
     ts: np.ndarray,
     o: np.ndarray,
     h: np.ndarray,
-    l: np.ndarray,
+    low: np.ndarray,
     c: np.ndarray,
     v: np.ndarray,
     signals: np.ndarray,
@@ -636,7 +636,7 @@ def _backtest_with_risk_from_signals(
         # 1) Comprobar SL / TP / max_bars antes de nuevas señales
         if position > 0.0:
             bars_in_trade = i - entry_bar_idx
-            price_low = l[i]
+            price_low = low[i]
             price_high = h[i]
             if not np.isfinite(price_low):
                 price_low = price
@@ -888,7 +888,7 @@ def run_backtest_with_signals(
         ts=data.ts,
         o=data.o,
         h=data.h,
-        l=data.l,
+        low=data.low,
         c=data.c,
         v=data.v,
         signals=signals.astype(np.int8),

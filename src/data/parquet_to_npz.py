@@ -57,11 +57,11 @@ def bars_df_to_npz_arrays(df: pd.DataFrame) -> dict[str, np.ndarray]:
 
     o = df["open"].to_numpy(dtype=np.float64)
     h = df["high"].to_numpy(dtype=np.float64)
-    l = df["low"].to_numpy(dtype=np.float64)
+    low = df["low"].to_numpy(dtype=np.float64)
     c = df["close"].to_numpy(dtype=np.float64)
     v = df["volume"].to_numpy(dtype=np.float64)
 
-    return {"ts": ts, "o": o, "h": h, "l": l, "c": c, "v": v}
+    return {"ts": ts, "o": o, "h": h, "l": low, "c": c, "v": v}
 
 
 

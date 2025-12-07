@@ -91,7 +91,7 @@ def _plot_single_trade(
     ts_dt = _ts_to_datetime(data.ts[window])
     o = data.o[window]
     h = data.h[window]
-    l = data.l[window]
+    low = data.low[window]
     c = data.c[window]
 
     df = pd.DataFrame(
@@ -99,7 +99,7 @@ def _plot_single_trade(
             "timestamp": pd.to_datetime(ts_dt),
             "open": o,
             "high": h,
-            "low": l,
+            "low": low,
             "close": c,
         }
     )

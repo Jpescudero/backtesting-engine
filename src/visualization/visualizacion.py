@@ -3,7 +3,6 @@ from __future__ import annotations
 
 from pathlib import Path
 
-import pandas as pd
 import mplfinance as mpf
 
 from data_utils import load_all_ticks, make_ohlcv

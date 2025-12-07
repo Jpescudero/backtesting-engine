@@ -8,7 +8,7 @@ from typing import Any, Dict, Tuple
 import numpy as np
 import pandas as pd
 
-from src.data.feeds import OHLCVArrays  # tipo contenedor ts, o, h, l, c, v
+from src.data.feeds import OHLCVArrays  # tipo contenedor ts, o, h, low, c, v
 
 
 @dataclass
@@ -83,7 +83,7 @@ class StrategyBarridaApertura:
     @staticmethod
     def _compute_atr(
         h: np.ndarray,
-        l: np.ndarray,
+        low: np.ndarray,
         c: np.ndarray,
         period: int = 14,
     ) -> np.ndarray:
@@ -96,11 +96,11 @@ class StrategyBarridaApertura:
             return np.zeros(0, dtype=float)
 
         tr = np.empty(n, dtype=float)
-        tr[0] = h[0] - l[0]
+        tr[0] = h[0] - low[0]
         for i in range(1, n):
-            high_low = h[i] - l[i]
+            high_low = h[i] - low[i]
             high_close_prev = abs(h[i] - c[i - 1])
-            low_close_prev = abs(l[i] - c[i - 1])
+            low_close_prev = abs(low[i] - c[i - 1])
             tr[i] = max(high_low, high_close_prev, low_close_prev)
 
         atr = np.full(n, np.nan, dtype=float)
@@ -145,7 +145,7 @@ class StrategyBarridaApertura:
         """
         o = np.asarray(data.o)
         h = np.asarray(data.h)
-        l = np.asarray(data.l)
+        low = np.asarray(data.low)
         c = np.asarray(data.c)
         v = np.asarray(data.v)
         ts = np.asarray(data.ts)
@@ -205,7 +205,7 @@ class StrategyBarridaApertura:
             confirm_mask = (c > o) & (c > prev_close)
 
         # 6) Filtro de fuerza del reversal vía ATR
-        atr = self._compute_atr(h=h, l=l, c=c, period=params.atr_period)
+        atr = self._compute_atr(h=h, low=low, c=c, period=params.atr_period)
         strength_mask = np.ones(n, dtype=bool)
         if params.min_reversal_strength_atr > 0.0 and np.isfinite(atr).any():
             strength = c - prev_close
