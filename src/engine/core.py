@@ -23,6 +23,7 @@ class BacktestConfig:
     initial_cash: float = 100_000.0
     commission_per_trade: float = 1.0   # comisión fija por operación (entrada o salida)
     trade_size: float = 1.0             # contratos/unidades por operación
+    min_trade_size: float = 0.01        # tamaño mínimo permitido por contrato/lote
     slippage: float = 0.0               # slippage en puntos
 
     # Gestión de riesgo
@@ -86,6 +87,31 @@ def _example_strategy_long_on_up_move(
     return signals
 
 
+@njit
+def _calculate_affordable_qty(
+    available_cash: float,
+    price_per_unit: float,
+    commission_per_trade: float,
+    desired_qty: float,
+    min_trade_size: float,
+) -> float:
+    """
+    Devuelve la cantidad máxima que se puede abrir sin pasar a efectivo negativo.
+
+    La cantidad resultante se ajusta a múltiplos de min_trade_size para permitir
+    operar con fracciones de contrato (p.ej. lotes de 0.01).
+    """
+    effective_cash = available_cash - commission_per_trade
+    if effective_cash <= 0.0 or price_per_unit <= 0.0 or desired_qty <= 0.0:
+        return 0.0
+
+    max_units = np.floor((effective_cash / price_per_unit) / min_trade_size) * min_trade_size
+    if max_units < min_trade_size:
+        return 0.0
+
+    return max_units if max_units < desired_qty else desired_qty
+
+
 # =====================
 # Motor de backtest con SL/TP & duración (Numba)
 # =====================
@@ -101,6 +127,7 @@ def _backtest_with_risk(
     initial_cash: float,
     commission_per_trade: float,
     trade_size: float,
+    min_trade_size: float,
     slippage: float,
     entry_threshold: float,
     sl_pct: float,
@@ -238,10 +265,17 @@ def _backtest_with_risk(
         # Señal de compra: abrir si no hay posición
         if sig == 1 and position == 0.0:
             trade_price = price + slippage
-            cost = trade_price * trade_size + commission_per_trade
-            if cash >= cost:
-                cash -= cost
-                position = trade_size
+            qty = _calculate_affordable_qty(
+                available_cash=cash,
+                price_per_unit=trade_price,
+                commission_per_trade=commission_per_trade,
+                desired_qty=trade_size,
+                min_trade_size=min_trade_size,
+            )
+            if qty > 0.0:
+                cash -= trade_price * qty
+                cash -= commission_per_trade
+                position = qty
                 entry_price = trade_price
                 entry_bar_idx = i
 
@@ -305,6 +339,7 @@ def run_backtest_basic(
         initial_cash=config.initial_cash,
         commission_per_trade=config.commission_per_trade,
         trade_size=config.trade_size,
+        min_trade_size=config.min_trade_size,
         slippage=config.slippage,
         entry_threshold=config.entry_threshold,
         sl_pct=config.sl_pct,
@@ -329,6 +364,7 @@ def run_backtest_basic(
         "initial_cash": config.initial_cash,
         "commission_per_trade": config.commission_per_trade,
         "trade_size": config.trade_size,
+        "min_trade_size": config.min_trade_size,
         "slippage": config.slippage,
         "sl_pct": config.sl_pct,
         "tp_pct": config.tp_pct,
@@ -360,6 +396,7 @@ def _backtest_with_risk_from_signals(
     initial_cash: float,
     commission_per_trade: float,
     trade_size: float,
+    min_trade_size: float,
     slippage: float,
     sl_pct: float,
     tp_pct: float,
@@ -495,11 +532,19 @@ def _backtest_with_risk_from_signals(
         # Señal de compra: abrir posición si estamos flat
         if sig == 1 and position == 0.0:
             trade_price = price + slippage
-            position = trade_size
-            cash -= trade_price * position
-            cash -= commission_per_trade
-            entry_price = trade_price
-            entry_bar_idx = i
+            qty = _calculate_affordable_qty(
+                available_cash=cash,
+                price_per_unit=trade_price,
+                commission_per_trade=commission_per_trade,
+                desired_qty=trade_size,
+                min_trade_size=min_trade_size,
+            )
+            if qty > 0.0:
+                position = qty
+                cash -= trade_price * position
+                cash -= commission_per_trade
+                entry_price = trade_price
+                entry_bar_idx = i
 
         # 3) Mark-to-market de la equity
         equity[i] = cash + position * price
@@ -568,6 +613,7 @@ def run_backtest_with_signals(
         initial_cash=config.initial_cash,
         commission_per_trade=config.commission_per_trade,
         trade_size=config.trade_size,
+        min_trade_size=config.min_trade_size,
         slippage=config.slippage,
         sl_pct=config.sl_pct,
         tp_pct=config.tp_pct,
@@ -591,6 +637,7 @@ def run_backtest_with_signals(
         "initial_cash": config.initial_cash,
         "commission_per_trade": config.commission_per_trade,
         "trade_size": config.trade_size,
+        "min_trade_size": config.min_trade_size,
         "slippage": config.slippage,
         "sl_pct": config.sl_pct,
         "tp_pct": config.tp_pct,

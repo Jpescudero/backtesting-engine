@@ -14,7 +14,16 @@ main.py
   # de la estrategia de barrida y genera:
   #   - Excel + JSON con resumen del backtest
   #   - PNG con mejores/peores trades
+  #   - Permite seleccionar años de train/test y capital inicial
   GitHub: https://github.com/Jpescudero/backtesting-engine/blob/main/main.py
+
+run_settings.example.txt
+  # Plantilla de configuración key=value para main.py
+  #   - initial_cash=... (capital inicial)
+  #   - train_years=2020,2021 (años de entrenamiento)
+  #   - test_years=2022,2023 (años de prueba)
+  #   - use_test_years=True/False (usar años de test o train)
+  # Copia este archivo y pásalo a main.py con --config-file
 
 
 CÓDIGO FUENTE
