@@ -174,10 +174,19 @@ def run_single_backtest(config: BacktestRunConfig) -> BacktestArtifacts:
         if "atr" in strat_res.meta:
             atr_array = np.asarray(strat_res.meta["atr"], dtype=float)
 
+        stop_losses = None
+        take_profits = None
+        if "initial_stop_loss" in strat_res.meta:
+            stop_losses = np.asarray(strat_res.meta["initial_stop_loss"], dtype=float)
+        if "take_profit" in strat_res.meta:
+            take_profits = np.asarray(strat_res.meta["take_profit"], dtype=float)
+
         result = run_backtest_with_signals(
             data,
             strat_res.signals,
             atr=atr_array,
+            stop_losses=stop_losses,
+            take_profits=take_profits,
             config=config.backtest_config,
         )
     logger.info(
