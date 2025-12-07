@@ -19,7 +19,7 @@ from src.pipeline.reporting import (
     generate_report_files,
     generate_trade_plots,
 )
-from src.strategies.barrida_apertura import StrategyBarridaApertura
+from src.strategies.microstructure_reversal import StrategyMicrostructureReversal
 from src.utils.timing import timed_step
 
 
@@ -28,8 +28,17 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class StrategyParams:
-    volume_percentile: float = 80.0
-    use_two_bearish_bars: bool = True
+    ema_short: int = 20
+    ema_long: int = 50
+    atr_period: int = 20
+    min_pullback_atr: float = 0.4
+    max_pullback_atr: float = 1.1
+    max_pullback_bars: int = 8
+    exhaustion_close_min: float = 0.4
+    exhaustion_close_max: float = 0.6
+    exhaustion_body_max_ratio: float = 0.4
+    shift_body_atr: float = 0.6
+    structure_break_lookback: int = 3
 
 
 @dataclass
@@ -107,13 +116,22 @@ def run_single_backtest(config: BacktestRunConfig) -> BacktestArtifacts:
             data = feed.load_all()
 
     with timed_step(timings, "03_generar_senales_estrategia"):
-        strategy = StrategyBarridaApertura(
-            volume_percentile=config.strategy_params.volume_percentile,
-            use_two_bearish_bars=config.strategy_params.use_two_bearish_bars,
+        strategy = StrategyMicrostructureReversal(
+            ema_short=config.strategy_params.ema_short,
+            ema_long=config.strategy_params.ema_long,
+            atr_period=config.strategy_params.atr_period,
+            min_pullback_atr=config.strategy_params.min_pullback_atr,
+            max_pullback_atr=config.strategy_params.max_pullback_atr,
+            max_pullback_bars=config.strategy_params.max_pullback_bars,
+            exhaustion_close_min=config.strategy_params.exhaustion_close_min,
+            exhaustion_close_max=config.strategy_params.exhaustion_close_max,
+            exhaustion_body_max_ratio=config.strategy_params.exhaustion_body_max_ratio,
+            shift_body_atr=config.strategy_params.shift_body_atr,
+            structure_break_lookback=config.strategy_params.structure_break_lookback,
         )
         strat_res = strategy.generate_signals(data)
     n_signals = int((strat_res.signals != 0).sum())
-    logger.info("Estrategia Barrida: %s señales generadas", n_signals)
+    logger.info("Estrategia Microstructure Reversal: %s señales generadas", n_signals)
 
     with timed_step(timings, "04_backtest_motor"):
         result = run_backtest_with_signals(data, strat_res.signals, config=config.backtest_config)
@@ -139,7 +157,7 @@ def run_single_backtest(config: BacktestRunConfig) -> BacktestArtifacts:
             excel_path, json_path = generate_report_files(
                 reports_dir=reports_dir,
                 symbol=config.symbol,
-                strategy_name="barrida_apertura",
+                strategy_name="microstructure_reversal",
                 equity_series=equity_series,
                 trades_df=trades_df,
                 equity_stats=equity_stats,
