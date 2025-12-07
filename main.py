@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import argparse
 import logging
+import math
 from pathlib import Path
 from typing import Iterable, Sequence
 
@@ -58,17 +59,104 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     return parser.parse_args(argv)
 
 
-def print_metrics(title: str, stats: dict) -> None:
+def _format_number(value, decimals: int = 2, pct: bool = False) -> str:
+    if value is None:
+        return "n/a"
+    if isinstance(value, float) and math.isnan(value):
+        return "n/a"
+    if pct:
+        return f"{value * 100:.{decimals}f}%"
+    if isinstance(value, float):
+        return f"{value:.{decimals}f}"
+    return str(value)
+
+
+def _format_money(value) -> str:
+    if value is None:
+        return "n/a"
+    if isinstance(value, float) and math.isnan(value):
+        return "n/a"
+    return f"{value:,.2f}"
+
+
+def print_metrics(title: str, stats: dict, ordered_keys: Sequence[str]) -> None:
     print(f"\n=== {title} ===")
-    for k, v in stats.items():
-        print(f"{k:25s}: {v}")
+    pct_keys = {"total_return", "annualized_return", "max_drawdown", "winrate", "var_95_monthly"}
+    for key in ordered_keys:
+        if key not in stats:
+            continue
+        val = stats[key]
+        is_pct = key in pct_keys
+        print(f"{key:25s}: {_format_number(val, decimals=4 if is_pct else 2, pct=is_pct)}")
 
 
 def print_timings(timings: dict) -> None:
     print("\n================ Tiempos de ejecución (segundos) ================")
+    total_time = sum(timings.values())
     for key in sorted(timings.keys()):
-        print(f"{key:35s}: {timings[key]:8.3f}")
+        step_time = timings[key]
+        pct = (step_time / total_time * 100.0) if total_time > 0 else 0.0
+        print(f"{key:35s}: {step_time:8.3f} s ({pct:5.1f}%)")
+    print(f"{'TOTAL':35s}: {total_time:8.3f} s (100.0%)")
     print("=================================================================")
+
+
+def _print_run_context(run_config: BacktestRunConfig) -> None:
+    cfg = run_config.backtest_config
+    header = [
+        ("Símbolo/TF", f"{run_config.symbol} / {run_config.timeframe}"),
+        ("Capital inicial", _format_money(cfg.initial_cash)),
+        ("Comisión por trade", _format_number(cfg.commission_per_trade)),
+        ("Slippage", _format_number(cfg.slippage)),
+        ("Tamaño trade", _format_number(cfg.trade_size)),
+        ("SL %", _format_number(cfg.sl_pct, pct=True)),
+        ("TP %", _format_number(cfg.tp_pct, pct=True)),
+        ("Max barras trade", _format_number(cfg.max_bars_in_trade)),
+        ("Umbral entrada", _format_number(cfg.entry_threshold)),
+        (
+            "Estrategia",
+            f"vol% {_format_number(run_config.strategy_params.volume_percentile)} | "
+            f"2 velas bajistas={'sí' if run_config.strategy_params.use_two_bearish_bars else 'no'}",
+        ),
+        ("Años train", ",".join(map(str, run_config.train_years)) if run_config.train_years else "(todos)"),
+        (
+            "Años test",
+            ",".join(map(str, run_config.test_years)) if run_config.test_years else "(no definidos)",
+        ),
+        ("Usar años test", "sí" if run_config.use_test_years else "no"),
+        ("Generar reportes", "sí" if run_config.generate_report_files else "no"),
+        ("Plots principales", "sí" if run_config.generate_main_plots else "no"),
+        ("Plots trades", "sí" if run_config.generate_trade_plots else "no"),
+        ("Headless", "sí" if run_config.headless else "no"),
+    ]
+
+    print("=== Configuración de ejecución ===")
+    for label, value in header:
+        print(f"{label:25s}: {value}")
+
+
+def print_headline_kpis(equity_stats: dict, trade_stats: dict) -> None:
+    kpis = [
+        ("Retorno total", equity_stats.get("total_return"), True),
+        ("Max drawdown", equity_stats.get("max_drawdown"), True),
+        ("Sharpe", equity_stats.get("sharpe_ratio"), False),
+        ("# trades", trade_stats.get("n_trades"), False),
+        ("Winrate", trade_stats.get("winrate"), True),
+    ]
+
+    print("\n=== KPIs rápidos ===")
+    for label, value, is_pct in kpis:
+        print(f"{label:25s}: {_format_number(value, decimals=4 if is_pct else 2, pct=is_pct)}")
+
+
+def _describe_artifact(path: str | Path | None) -> str:
+    if not path:
+        return "(no generado)"
+    p = Path(path)
+    if not p.exists():
+        return f"{p} (no encontrado)"
+    size_kb = p.stat().st_size / 1024.0
+    return f"{p} ({size_kb:.1f} KB)"
 
 
 def _parse_years(raw: str | None) -> list[int] | None:
@@ -178,23 +266,56 @@ def main(argv: Iterable[str] | None = None) -> None:
         backtest_config=backtest_config,
     )
 
+    _print_run_context(run_config)
+
     artifacts = run_single_backtest(run_config)
 
-    print_metrics("Métricas de equity (tipo Darwinex)", artifacts.equity_stats)
-    print_metrics("Métricas de trades", artifacts.trade_stats)
+    print_headline_kpis(artifacts.equity_stats, artifacts.trade_stats)
+
+    equity_keys = [
+        "start_equity",
+        "end_equity",
+        "total_return",
+        "annualized_return",
+        "max_drawdown",
+        "return_drawdown_ratio",
+        "sharpe_ratio",
+        "sortino_ratio",
+        "volatility_annual",
+        "var_95_monthly",
+        "n_days",
+        "n_months",
+    ]
+    trade_keys = [
+        "n_trades",
+        "winrate",
+        "avg_pnl",
+        "avg_win",
+        "avg_loss",
+        "payoff_ratio",
+        "expectancy_per_trade",
+        "avg_holding_bars",
+        "exit_reason_counts",
+    ]
+
+    print_metrics("Métricas de equity (tipo Darwinex)", artifacts.equity_stats, equity_keys)
+    print_metrics("Métricas de trades", artifacts.trade_stats, trade_keys)
     print("\n=== Tail de la curva de equity ===")
-    print(artifacts.equity_series.tail())
+    print(artifacts.equity_series.tail().to_frame("equity"))
     print("\n=== Primeros trades ===")
     print(artifacts.trades_df.head())
+    if not artifacts.trades_df.empty:
+        print("\n=== Últimos trades ===")
+        print(artifacts.trades_df.tail())
 
     if run_config.generate_report_files:
         print("\n=== Ficheros de resumen generados ===")
-        print(f"Excel: {artifacts.reports.excel_path}")
-        print(f"JSON:  {artifacts.reports.json_path}")
+        print(f"Excel: {_describe_artifact(artifacts.reports.excel_path)}")
+        print(f"JSON:  {_describe_artifact(artifacts.reports.json_path)}")
     if run_config.generate_main_plots:
-        print(f"Plot equity/trades: {artifacts.reports.equity_path}")
+        print(f"Plot equity/trades: {_describe_artifact(artifacts.reports.equity_path)}")
     if run_config.generate_trade_plots:
-        print(f"Plot mejores/peores trades: {artifacts.reports.trade_plot_path}")
+        print(f"Plot mejores/peores trades: {_describe_artifact(artifacts.reports.trade_plot_path)}")
 
     print_timings(artifacts.timings)
 
