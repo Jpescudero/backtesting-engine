@@ -500,6 +500,9 @@ def run_backtest_basic(
         "max_bars_in_trade": config.max_bars_in_trade,
         "entry_threshold": config.entry_threshold,
         "n_trades": trade_count,
+        # Guardamos SL/TP iniciales para poder plotearlos después
+        "stop_losses": stop_losses,
+        "take_profits": take_profits,
     }
 
     return BacktestResult(
