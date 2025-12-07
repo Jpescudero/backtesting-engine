@@ -116,10 +116,10 @@ def _meta_summary(meta: Optional[Mapping[str, Any]]) -> Dict[str, Any]:
                 "length": len(v),
             }
         else:
-            # valor escalar o pequeño
+            # valor escalar o pequeño (incluye dataclasses u objetos simples)
             summary[key] = {
                 "type": type(v).__name__,
-                "value": v,
+                "value": _to_serializable(v),
             }
 
     return summary
