@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import argparse
 import logging
+from pathlib import Path
 from typing import Iterable, Sequence
 
 from src.engine.core import BacktestConfig
@@ -96,6 +97,31 @@ def _load_config_file(path: str | None) -> dict:
     return config
 
 
+def _resolve_config_file(cli_path: str | None) -> str | None:
+    """Devuelve la ruta del archivo de configuración a usar.
+
+    Prioriza la ruta explícita de CLI; si no existe, intenta usar un archivo
+    `run_settings.txt` en el directorio del proyecto y, en su defecto,
+    `run_settings.example.txt`. Si ninguno existe, devuelve ``None`` para
+    seguir con los valores por defecto en código.
+    """
+
+    if cli_path:
+        return cli_path
+
+    cwd = Path(__file__).resolve().parent
+    project_root = cwd
+    # El script vive en la raíz del repo; por claridad dejamos el cálculo
+    # explícito en caso de moverlo en el futuro.
+    candidates = [project_root / "run_settings.txt", project_root / "run_settings.example.txt"]
+
+    for candidate in candidates:
+        if candidate.exists():
+            return str(candidate)
+
+    return None
+
+
 def _get_setting(
     cli_value,
     config: dict,
@@ -115,7 +141,7 @@ def main(argv: Iterable[str] | None = None) -> None:
 
     logging.basicConfig(level=logging.INFO, format="[%(levelname)s] %(message)s")
 
-    config_file_values = _load_config_file(args.config_file)
+    config_file_values = _load_config_file(_resolve_config_file(args.config_file))
 
     initial_cash = _get_setting(args.initial_cash, config_file_values, "initial_cash", 100_000.0, float)
     train_years = _get_setting(_parse_years(args.train_years), config_file_values, "train_years", None, _parse_years)
