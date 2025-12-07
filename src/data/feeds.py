@@ -21,7 +21,7 @@ class OHLCVArrays:
     ts: np.ndarray
     o: np.ndarray
     h: np.ndarray
-    l: np.ndarray
+    low: np.ndarray
     c: np.ndarray
     v: np.ndarray
 
@@ -38,11 +38,11 @@ def _load_npz_file(npz_path: Path) -> OHLCVArrays:
     ts = data["ts"]
     o = data["o"]
     h = data["h"]
-    l = data["l"]
+    low = data["l"]
     c = data["c"]
     v = data["v"]
 
-    return OHLCVArrays(ts=ts, o=o, h=h, l=l, c=c, v=v)
+    return OHLCVArrays(ts=ts, o=o, h=h, low=low, c=c, v=v)
 
 
 def _concat_ohlcv_arrays(arrays_list: List[OHLCVArrays]) -> OHLCVArrays:
@@ -52,11 +52,11 @@ def _concat_ohlcv_arrays(arrays_list: List[OHLCVArrays]) -> OHLCVArrays:
     ts = np.concatenate([a.ts for a in arrays_list])
     o = np.concatenate([a.o for a in arrays_list])
     h = np.concatenate([a.h for a in arrays_list])
-    l = np.concatenate([a.l for a in arrays_list])
+    low = np.concatenate([a.low for a in arrays_list])
     c = np.concatenate([a.c for a in arrays_list])
     v = np.concatenate([a.v for a in arrays_list])
 
-    return OHLCVArrays(ts=ts, o=o, h=h, l=l, c=c, v=v)
+    return OHLCVArrays(ts=ts, o=o, h=h, low=low, c=c, v=v)
 
 
 def _extract_years_from_timestamps(ts: np.ndarray) -> np.ndarray:
@@ -94,7 +94,7 @@ def filter_ohlcv_by_years(data: OHLCVArrays, years: Sequence[int]) -> OHLCVArray
         ts=data.ts[mask],
         o=data.o[mask],
         h=data.h[mask],
-        l=data.l[mask],
+        low=data.low[mask],
         c=data.c[mask],
         v=data.v[mask],
     )
