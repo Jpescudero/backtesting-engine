@@ -2,9 +2,9 @@ from __future__ import annotations
 
 import json
 import logging
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass, field, is_dataclass
 from pathlib import Path
-from typing import Dict, Mapping, Optional
+from typing import Dict, Mapping, Optional, Sequence, Union
 
 import matplotlib
 import numpy as np
@@ -58,11 +58,13 @@ def _save_snapshots(path: Path, snapshots) -> None:
 def _build_run_metadata(
     *, config: BacktestRunConfig, seeds: Mapping[str, object], snapshot_path: Path | None
 ) -> Dict[str, object]:
+    strategy_params = config.strategy_params
+
     return {
         "symbol": config.symbol,
         "timeframe": config.timeframe,
         "strategy_name": config.strategy_name,
-        "strategy_params": asdict(config.strategy_params),
+        "strategy_params": asdict(strategy_params),
         "backtest_config": asdict(config.backtest_config),
         "train_years": config.train_years,
         "test_years": config.test_years,
@@ -107,6 +109,9 @@ class StrategyParams:
     structure_break_lookback: int = 3
 
 
+StrategyParamsType = Union[StrategyParams, SweepParams]
+
+
 @dataclass
 class BacktestRunConfig:
     symbol: str = "NDXm"
@@ -126,7 +131,7 @@ class BacktestRunConfig:
     resume_snapshot: Optional[Path] = None
     run_metadata_path: Optional[Path] = None
     replay_metadata: Optional[Path] = None
-    strategy_params: object = field(default_factory=StrategyParams)
+    strategy_params: StrategyParamsType = field(default_factory=StrategyParams)
     backtest_config: BacktestConfig = field(
         default_factory=lambda: BacktestConfig(
             initial_cash=100_000.0,
@@ -157,6 +162,37 @@ class BacktestArtifacts:
     reports: BacktestReports
 
 
+def _params_mapping(params: object) -> Mapping[str, object]:
+    if is_dataclass(params):
+        return asdict(params)
+    if isinstance(params, Mapping):
+        return params
+    return {
+        key: getattr(params, key)
+        for key in dir(params)
+        if not key.startswith("_") and not callable(getattr(params, key))
+    }
+
+
+def _coerce_strategy_params(
+    params: StrategyParamsType | Mapping[str, object], strategy_name: str
+) -> StrategyParamsType:
+    if strategy_name == "microstructure_sweep":
+        if isinstance(params, SweepParams):
+            return params
+        return SweepParams(**_params_mapping(params))
+
+    if isinstance(params, StrategyParams):
+        return params
+    return StrategyParams(**_params_mapping(params))
+
+
+def _validated_years(years: Optional[Sequence[int]], *, label: str) -> Sequence[int]:
+    if years is None:
+        raise ValueError(f"'{label}' está a None pero se esperaba una lista de años")
+    return years
+
+
 def _configure_matplotlib(headless: bool) -> None:
     if headless:
         matplotlib.use("Agg")
@@ -165,6 +201,9 @@ def _configure_matplotlib(headless: bool) -> None:
 def run_single_backtest(config: BacktestRunConfig) -> BacktestArtifacts:
     _configure_matplotlib(config.headless)
 
+    config.strategy_params = _coerce_strategy_params(
+        config.strategy_params, strategy_name=config.strategy_name
+    )
     seeds = seed_everything(config.seed)
 
     resume_snapshot: BacktestSnapshot | None = None
@@ -200,13 +239,10 @@ def run_single_backtest(config: BacktestRunConfig) -> BacktestArtifacts:
             config.test_years is not None and not config.train_years
         )
 
-        if use_test_years and not config.test_years:
-            raise ValueError("'use_test_years' está a True pero no se han definido test_years")
-
         if use_test_years:
-            data = feed.load_years(config.test_years)
+            data = feed.load_years(_validated_years(config.test_years, label="test_years"))
             logger.info("Usando años de prueba: %s", config.test_years)
-        elif config.train_years:
+        elif config.train_years is not None:
             data = feed.load_years(config.train_years)
             logger.info("Usando años de entrenamiento: %s", config.train_years)
         else:
@@ -216,8 +252,10 @@ def run_single_backtest(config: BacktestRunConfig) -> BacktestArtifacts:
         if atr_tf and atr_tf != config.timeframe:
             atr_feed = NPZOHLCVFeed(symbol=config.symbol, timeframe=atr_tf)
             if use_test_years:
-                atr_data = atr_feed.load_years(config.test_years)
-            elif config.train_years:
+                atr_data = atr_feed.load_years(
+                    _validated_years(config.test_years, label="test_years")
+                )
+            elif config.train_years is not None:
                 atr_data = atr_feed.load_years(config.train_years)
             else:
                 atr_data = atr_feed.load_all()
