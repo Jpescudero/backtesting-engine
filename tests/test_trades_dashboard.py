@@ -15,8 +15,11 @@ def test_build_trades_dashboard(tmp_path) -> None:
             "volatility": [0.8, 1.2, 0.5],
         }
     )
-
-    output = build_trades_dashboard(trades, tmp_path / "dashboard.html", volatility_col="volatility")
+    output = build_trades_dashboard(
+        trades,
+        tmp_path / "dashboard.html",
+        volatility_col="volatility",
+    )
 
     html = output.read_text(encoding="utf-8")
     assert output.exists()
