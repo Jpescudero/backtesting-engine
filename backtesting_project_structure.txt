@@ -10,11 +10,12 @@ Carpeta local típica:
 EJECUTABLE PRINCIPAL
 --------------------
 main.py
-  # Punto de entrada: orquesta todo el pipeline, lanza el backtest
-  # de la estrategia de barrida y genera:
+  # Punto de entrada: orquesta todo el pipeline, lanza backtests
+  # de Microstructure Reversal (default) o Microstructure Sweep y genera:
   #   - Excel + JSON con resumen del backtest
   #   - PNG con mejores/peores trades
   #   - Permite seleccionar años de train/test y capital inicial
+  #   - Selector --strategy y flags avanzados (ATR timeframe, volumen, etc.)
   GitHub: https://github.com/Jpescudero/backtesting-engine/blob/main/main.py
 
 run_settings.example.txt
@@ -23,6 +24,8 @@ run_settings.example.txt
   #   - train_years=2020,2021 (años de entrenamiento)
   #   - test_years=2022,2023 (años de prueba)
   #   - use_test_years=True/False (usar años de test o train)
+  #   - strategy=microstructure_sweep (para cambiar desde Microstructure Reversal)
+  #   - sweep_lookback=..., min_sweep_break_atr=..., etc. (parámetros opcionales)
   # Copia este archivo y pásalo a main.py con --config-file
 
 
@@ -121,6 +124,12 @@ src\
     microstructure_reversal.py
       # Estrategia de reversión microestructural (pullbacks, break de estructura, etc.)
       GitHub: https://github.com/Jpescudero/backtesting-engine/blob/main/src/strategies/microstructure_reversal.py
+
+    microstructure_sweep.py
+      # Estrategia de "sweep" + absorción: barridas de mínimos con mecha larga,
+      # confirmación de vela siguiente, filtros de volumen relativo/percentiles,
+      # ventanas intradía, límite de trades/día y SL/TP basados en ATR
+      GitHub: https://github.com/Jpescudero/backtesting-engine/blob/main/src/strategies/microstructure_sweep.py
 
     base.py
       # Clases base y tipos comunes para estrategias
