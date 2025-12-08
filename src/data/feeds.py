@@ -56,7 +56,33 @@ def _concat_ohlcv_arrays(arrays_list: List[OHLCVArrays]) -> OHLCVArrays:
     c = np.concatenate([a.c for a in arrays_list])
     v = np.concatenate([a.v for a in arrays_list])
 
-    return OHLCVArrays(ts=ts, o=o, h=h, low=low, c=c, v=v)
+    return _sort_and_dedup_ohlcv(OHLCVArrays(ts=ts, o=o, h=h, low=low, c=c, v=v))
+
+
+def _sort_and_dedup_ohlcv(data: OHLCVArrays) -> OHLCVArrays:
+    """Ordena las barras por timestamp y elimina duplicados conservando la última.
+
+    Al concatenar ficheros diferentes pueden colarse timestamps duplicados o fuera
+    de orden, lo que provoca artefactos en curvas de equity y métricas. Este helper
+    deja los arrays alineados y limpios.
+    """
+
+    sort_idx = np.argsort(data.ts)
+    ts_sorted = data.ts[sort_idx]
+
+    # Máscara que conserva la última ocurrencia de cada timestamp (comparando con
+    # el siguiente elemento) y siempre el último elemento.
+    dedup_mask = np.concatenate((ts_sorted[1:] != ts_sorted[:-1], [True]))
+    keep_idx = sort_idx[dedup_mask]
+
+    return OHLCVArrays(
+        ts=data.ts[keep_idx],
+        o=data.o[keep_idx],
+        h=data.h[keep_idx],
+        low=data.low[keep_idx],
+        c=data.c[keep_idx],
+        v=data.v[keep_idx],
+    )
 
 
 def _extract_years_from_timestamps(ts: np.ndarray) -> np.ndarray:
