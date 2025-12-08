@@ -32,9 +32,17 @@ def equity_curve_metrics(equity: pd.Series) -> Dict[str, Any]:
     equity = equity.sort_index()
 
     # --- Retornos simples ---
+    equity = equity[equity != 0]
+    if equity.empty:
+        return {}
+
     start_eq = float(equity.iloc[0])
     end_eq = float(equity.iloc[-1])
-    total_return = end_eq / start_eq - 1.0
+
+    if start_eq != 0:
+        total_return = end_eq / start_eq - 1.0
+    else:
+        total_return = np.nan
 
     # Horizonte en años
     delta_days = (equity.index[-1] - equity.index[0]).days
