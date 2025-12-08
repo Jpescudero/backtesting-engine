@@ -121,6 +121,14 @@ This table expands on the individual scripts and modules so you can quickly unde
 
 Para compartir enlaces rápidos del repositorio (README, scripts principales, estrategias, pruebas, notebooks, etc.) con ChatGPT u otros colaboradores, consulta la [guía de links en GitHub](docs/github_links_guide.md) y sustituye `<OWNER>/<REPO>` por el nombre real del repositorio.
 
+### 1.5 Calidad y flujo de desarrollo
+
+- **Formateo y linting**: configuración centralizada en `pyproject.toml` para **Black** (100 columnas), **Ruff** (incluye reglas de importación isort) y **isort** con `src` como primer partido.
+- **Tipado**: **mypy** se ejecuta sobre `src` y `tests` con Python 3.10.
+- **Cobertura**: se exige un mínimo del 80 % (`fail_under = 80`) y se genera `coverage.xml`.
+- **CI (GitHub Actions)**: el workflow `.github/workflows/ci.yml` instala `requirements-dev.txt` y ejecuta Ruff, Black, isort, mypy y `pytest --cov` subiendo el XML como artefacto.
+- **Pre-commit**: `.pre-commit-config.yaml` añade hooks para Ruff (lint + format), Black, isort y comprobaciones básicas de espacio en blanco. Ejecuta `pre-commit install` tras clonar para activar los hooks locales.
+
 ### 1.4 Project layout reference from `backtesting_project_structure.txt`
 
 For a quick orientation, this mirrors the annotated structure documented in `backtesting_project_structure.txt` (useful when browsing the repo or mapping local folders):
