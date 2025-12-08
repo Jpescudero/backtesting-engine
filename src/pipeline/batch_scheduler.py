@@ -10,9 +10,9 @@ from __future__ import annotations
 import copy
 import logging
 import multiprocessing as mp
+from collections.abc import Iterable, Mapping, MutableMapping, Sequence
 from dataclasses import asdict, dataclass, is_dataclass
 from pathlib import Path
-from typing import Iterable, Mapping, MutableMapping, Sequence
 
 import pandas as pd
 
