@@ -365,4 +365,3 @@ def build_trades_dashboard(
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_text(dashboard_html, encoding="utf-8")
     return output_path
-
