@@ -25,26 +25,49 @@ def bars_df_to_npz_arrays(df: pd.DataFrame) -> dict[str, np.ndarray]:
       - 'volume' opcional (si no está, se crea como 1.0).
 
     Además:
-      - Elimina filas con NaN en open/high/low/close.
+      - Valida que no existan NaN en las columnas OHLC.
+      - Verifica que el índice esté ordenado y sin gaps críticos.
     """
     if not isinstance(df.index, pd.DatetimeIndex):
         raise ValueError("El DataFrame de barras debe tener un DatetimeIndex.")
 
+    if not df.index.is_monotonic_increasing:
+        raise ValueError(
+            "El índice temporal no está ordenado de forma ascendente; corrige los datos antes de generar el NPZ."
+        )
+
+    if not df.index.is_unique:
+        raise ValueError(
+            "El índice temporal contiene duplicados; no se pueden generar barras determinísticas."
+        )
+
     # Aseguramos orden temporal
     df = df.sort_index()
+
+    deltas = df.index.to_series().diff().dropna()
+    if not deltas.empty:
+        typical_delta = deltas.median()
+        max_delta = deltas.max()
+        if typical_delta <= pd.Timedelta(0):
+            raise ValueError("No se pudo inferir una frecuencia temporal válida para las barras.")
+
+        if max_delta > typical_delta * 5:
+            raise ValueError(
+                "Se detectaron gaps críticos en el feed: intervalo máximo "
+                f"de {max_delta} vs frecuencia típica {typical_delta}."
+            )
 
     # Comprobamos columnas básicas
     for col in ("open", "high", "low", "close"):
         if col not in df:
             raise ValueError(f"El DataFrame debe contener la columna '{col}'.")
 
-    # Eliminamos cualquier barra con OHLC incompleto
-    before = len(df)
-    df = df.dropna(subset=["open", "high", "low", "close"])
-    after = len(df)
-    dropped = before - after
-    if dropped > 0:
-        print(f"[bars_df_to_npz_arrays] Eliminadas {dropped} filas con OHLC NaN")
+    # Validamos ausencia de NaN en OHLC
+    ohlc_nan_rows = df[["open", "high", "low", "close"]].isna().any(axis=1).sum()
+    if ohlc_nan_rows > 0:
+        raise ValueError(
+            f"Se encontraron {ohlc_nan_rows} filas con valores OHLC NaN; limpia los datos antes de convertir."
+        )
 
     # Volumen: si no hay, creamos; si hay NaN, los rellenamos con 0.0
     if "volume" not in df:

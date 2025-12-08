@@ -134,6 +134,34 @@ def _clip_size(value: float, min_trade_size: float, max_trade_size: float) -> fl
 
 
 @njit
+def _validate_order_request(
+    qty: float,
+    trade_price: float,
+    cash: float,
+    commission_per_trade: float,
+    min_trade_size: float,
+    max_trade_size: float,
+) -> None:
+    """Valida que una orden sea consistente antes de encolarla/ejecutarla."""
+
+    if not np.isfinite(qty) or not np.isfinite(trade_price):
+        raise ValueError("Orden inválida: tamaño o precio no son finitos.")
+
+    if qty <= 0.0:
+        raise ValueError("Orden inválida: el tamaño debe ser mayor que 0.")
+
+    if qty < min_trade_size:
+        raise ValueError("Orden inválida: el tamaño está por debajo del mínimo configurado.")
+
+    if max_trade_size > 0.0 and qty > max_trade_size:
+        raise ValueError("Orden inválida: el tamaño excede el máximo permitido.")
+
+    total_cost = trade_price * qty + commission_per_trade
+    if total_cost > cash:
+        raise ValueError("Fondos insuficientes para abrir la orden solicitada.")
+
+
+@njit
 def _compute_risk_based_qty(
     equity: float,
     atr_value: float,
@@ -407,14 +435,27 @@ def _backtest_with_risk(
                 desired_qty=trade_size,
                 min_trade_size=min_trade_size,
             )
-            if qty > 0.0:
-                cash -= trade_price * qty
-                cash -= commission_per_trade
-                position = qty
-                entry_price = trade_price
-                entry_bar_idx = i
-                stop_price = trade_price * (1.0 - sl_pct)
-                tp_price = trade_price * (1.0 + tp_pct)
+            if qty <= 0.0:
+                raise ValueError(
+                    "Orden rechazada: tamaño calculado no positivo o fondos insuficientes para abrir posición."
+                )
+
+            _validate_order_request(
+                qty=qty,
+                trade_price=trade_price,
+                cash=cash,
+                commission_per_trade=commission_per_trade,
+                min_trade_size=min_trade_size,
+                max_trade_size=max_trade_size,
+            )
+
+            cash -= trade_price * qty
+            cash -= commission_per_trade
+            position = qty
+            entry_price = trade_price
+            entry_bar_idx = i
+            stop_price = trade_price * (1.0 - sl_pct)
+            tp_price = trade_price * (1.0 + tp_pct)
 
         # 3) Mark-to-market de la equity
         equity[i] = cash + position * price
@@ -769,28 +810,41 @@ def _backtest_with_risk_from_signals(
                 desired_qty=desired_qty,
                 min_trade_size=min_trade_size,
             )
-            if qty > 0.0:
-                position = qty
-                cash -= trade_price * position
-                cash -= commission_per_trade
-                entry_price = trade_price
-                entry_bar_idx = i
+            if qty <= 0.0:
+                raise ValueError(
+                    "Orden rechazada: tamaño calculado no positivo o fondos insuficientes para abrir posición."
+                )
 
-                if has_custom_stops:
-                    stop_price = sl_price
-                    tp_price = tp_price_candidate
-                    use_atr_stops = True
-                elif has_atr and atr_stop_mult > 0.0:
-                    stop_distance = atr_stop_mult * atr_val
-                    stop_price = trade_price - stop_distance
-                    tp_price = 0.0
-                    if atr_tp_mult > 0.0:
-                        tp_price = trade_price + atr_tp_mult * atr_val
-                    use_atr_stops = stop_distance > 0.0
-                else:
-                    stop_price = trade_price * (1.0 - sl_pct) if sl_pct > 0.0 else 0.0
-                    tp_price = trade_price * (1.0 + tp_pct) if tp_pct > 0.0 else 0.0
-                    use_atr_stops = False
+            _validate_order_request(
+                qty=qty,
+                trade_price=trade_price,
+                cash=cash,
+                commission_per_trade=commission_per_trade,
+                min_trade_size=min_trade_size,
+                max_trade_size=max_trade_size,
+            )
+
+            position = qty
+            cash -= trade_price * position
+            cash -= commission_per_trade
+            entry_price = trade_price
+            entry_bar_idx = i
+
+            if has_custom_stops:
+                stop_price = sl_price
+                tp_price = tp_price_candidate
+                use_atr_stops = True
+            elif has_atr and atr_stop_mult > 0.0:
+                stop_distance = atr_stop_mult * atr_val
+                stop_price = trade_price - stop_distance
+                tp_price = 0.0
+                if atr_tp_mult > 0.0:
+                    tp_price = trade_price + atr_tp_mult * atr_val
+                use_atr_stops = stop_distance > 0.0
+            else:
+                stop_price = trade_price * (1.0 - sl_pct) if sl_pct > 0.0 else 0.0
+                tp_price = trade_price * (1.0 + tp_pct) if tp_pct > 0.0 else 0.0
+                use_atr_stops = False
 
         # 3) Mark-to-market de la equity
         equity[i] = cash + position * price
