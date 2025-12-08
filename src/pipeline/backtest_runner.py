@@ -182,14 +182,18 @@ def _params_mapping(params: object) -> Dict[str, Any]:
 
 @overload
 def _coerce_strategy_params(
-    params: StrategyParamsType | Mapping[str, object], *, strategy_name: Literal["microstructure_sweep"]
+    params: StrategyParamsType | Mapping[str, object],
+    *,
+    strategy_name: Literal["microstructure_sweep"],
 ) -> SweepParams:
     ...
 
 
 @overload
 def _coerce_strategy_params(
-    params: StrategyParamsType | Mapping[str, object], *, strategy_name: Literal["microstructure_reversal"]
+    params: StrategyParamsType | Mapping[str, object],
+    *,
+    strategy_name: Literal["microstructure_reversal"],
 ) -> StrategyParams:
     ...
 
