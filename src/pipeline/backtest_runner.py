@@ -236,6 +236,7 @@ def run_single_backtest(config: BacktestRunConfig) -> BacktestArtifacts:
     config.strategy_params = _coerce_strategy_params(
         config.strategy_params, strategy_name=config.strategy_name
     )
+    strategy_params = config.strategy_params
     seeds = seed_everything(config.seed)
 
     resume_snapshot: BacktestSnapshot | None = None
@@ -270,8 +271,6 @@ def run_single_backtest(config: BacktestRunConfig) -> BacktestArtifacts:
         test_years: Sequence[int] | None = config.test_years
         train_years: Sequence[int] | None = config.train_years
 
-        use_test_years = config.use_test_years or (test_years is not None and not train_years)
-
         if use_test_years:
             data = feed.load_years(_validated_years(config.test_years, label="test_years"))
             logger.info("Usando años de prueba: %s", config.test_years)
@@ -281,7 +280,7 @@ def run_single_backtest(config: BacktestRunConfig) -> BacktestArtifacts:
         else:
             data = feed.load_all()
 
-        atr_tf = getattr(config.strategy_params, "atr_timeframe", None)
+        atr_tf = getattr(strategy_params, "atr_timeframe", None)
         if atr_tf and atr_tf != config.timeframe:
             atr_feed = NPZOHLCVFeed(symbol=config.symbol, timeframe=atr_tf)
             if use_test_years:
@@ -296,7 +295,7 @@ def run_single_backtest(config: BacktestRunConfig) -> BacktestArtifacts:
     with timed_step(timings, "03_generar_senales_estrategia"):
         strategy: StrategyMicrostructureReversal | StrategyMicrostructureSweep
         if config.strategy_name == "microstructure_reversal":
-            assert isinstance(config.strategy_params, StrategyParams)
+            assert isinstance(strategy_params, StrategyParams)
             strategy = StrategyMicrostructureReversal(
                 ema_short=strategy_params.ema_short,
                 ema_long=strategy_params.ema_long,
@@ -313,8 +312,7 @@ def run_single_backtest(config: BacktestRunConfig) -> BacktestArtifacts:
                 structure_break_lookback=strategy_params.structure_break_lookback,
             )
         else:
-            assert isinstance(config.strategy_params, SweepParams)
-            strategy_params = config.strategy_params
+            assert isinstance(strategy_params, SweepParams)
             strategy = StrategyMicrostructureSweep(
                 ema_short=strategy_params.ema_short,
                 ema_long=strategy_params.ema_long,
