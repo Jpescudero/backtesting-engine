@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import List
 
-from src.backtesting.core.models import MarketDataBatch, OrderFill, TradeTimeline
+from src.backtesting.core.models import OrderFill, TradeTimeline
 from src.backtesting.data.interfaces import DataLoader
 from src.backtesting.execution.interfaces import Broker
 from src.backtesting.strategy.interfaces import Strategy

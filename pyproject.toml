@@ -1,0 +1,44 @@
+[build-system]
+requires = ["setuptools"]
+build-backend = "setuptools.build_meta"
+
+[tool.black]
+line-length = 100
+target-version = ["py310"]
+include = "(src|tests|main.py)"
+exclude = "(build|dist|docs|data|notebooks|bench|reports)"
+
+[tool.isort]
+profile = "black"
+line_length = 100
+known_first_party = ["src"]
+skip = ["build", "dist", "data", "docs", "notebooks", "bench", "reports"]
+
+[tool.ruff]
+target-version = "py310"
+line-length = 100
+src = ["src", "tests"]
+extend-exclude = ["build", "dist", "data", "docs", "notebooks", "bench", "reports"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I"]
+ignore = []
+fixable = ["I"]
+
+[tool.mypy]
+python_version = "3.10"
+ignore_missing_imports = true
+mypy_path = "src"
+warn_unused_configs = true
+pretty = true
+show_error_context = true
+
+[tool.coverage.run]
+branch = true
+source = ["src"]
+omit = ["*/__init__.py", "bench/*", "notebooks/*", "docs/*"]
+
+[tool.coverage.report]
+fail_under = 80
+show_missing = true
+skip_covered = true

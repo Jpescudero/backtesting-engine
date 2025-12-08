@@ -3,10 +3,9 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Dict, Any
+from typing import Any, Dict
 
 import numpy as np
-
 from src.data.feeds import OHLCVArrays
 
 
@@ -23,6 +22,7 @@ class StrategyResult:
     - meta: diccionario para guardar información extra (p.ej. máscaras,
       parámetros usados, etc.).
     """
+
     signals: np.ndarray
     meta: Dict[str, Any]
 

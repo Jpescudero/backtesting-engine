@@ -4,10 +4,8 @@ from datetime import datetime
 from typing import Callable, Sequence
 
 import numpy as np
-
-from src.backtesting.core.models import OrderRequest
+from src.backtesting.core.models import MarketDataBatch, OrderRequest
 from src.backtesting.strategy.interfaces import Strategy
-from src.backtesting.core.models import MarketDataBatch
 
 SignalGenerator = Callable[[MarketDataBatch], np.ndarray]
 
@@ -43,7 +41,15 @@ class SignalStrategyAdapter(Strategy):
         side = "buy" if signal > 0 else "sell"
         ts_value = data.timestamps[bar_index]
         ts_dt = datetime.utcfromtimestamp(float(ts_value) / 1e9)
-        return [OrderRequest(symbol=self.symbol, side=side, quantity=self.qty, timestamp=ts_dt, bar_index=bar_index)]
+        return [
+            OrderRequest(
+                symbol=self.symbol,
+                side=side,
+                quantity=self.qty,
+                timestamp=ts_dt,
+                bar_index=bar_index,
+            )
+        ]
 
 
 def simple_momentum_signal(threshold: float = 0.001) -> SignalGenerator:

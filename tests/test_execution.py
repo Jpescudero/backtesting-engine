@@ -1,16 +1,16 @@
-import numpy as np
 import pytest
-
 from src.engine.execution import (
     ExecutionParameters,
-    ExecutionSimulator,
     ExecutionResult,
+    ExecutionSimulator,
     get_scenario,
 )
 
 
 def test_partial_fill_with_limited_depth():
-    params = ExecutionParameters(base_slippage=0.0, liquidity_slippage=0.0, fixed_cost=0.0, variable_cost_pct=0.0)
+    params = ExecutionParameters(
+        base_slippage=0.0, liquidity_slippage=0.0, fixed_cost=0.0, variable_cost_pct=0.0
+    )
     simulator = ExecutionSimulator(params)
     book = [(101.0, 5.0)]  # profundidad mínima
 

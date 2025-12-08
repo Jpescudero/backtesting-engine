@@ -18,6 +18,8 @@ class Strategy(ABC):
         """Hook opcional de pre-cálculo (indicadores, máscaras, etc.)."""
 
     @abstractmethod
-    def on_bar(self, bar_index: int, data: MarketDataBatch) -> Sequence[OrderRequest]:  # pragma: no cover - contrato
+    def on_bar(
+        self, bar_index: int, data: MarketDataBatch
+    ) -> Sequence[OrderRequest]:  # pragma: no cover - contrato
         """Genera órdenes para la barra actual."""
         raise NotImplementedError

@@ -9,7 +9,6 @@ import numpy as np
 import pandas as pd
 from numba import njit
 from numpy.lib.stride_tricks import sliding_window_view
-
 from src.data.feeds import OHLCVArrays
 from src.strategies.base import StrategyResult
 
@@ -227,9 +226,8 @@ class StrategyMicrostructureReversal:
         # Ventanas horarias (Europe/Madrid con horario de verano/invierno automático)
         idx_local = pd.to_datetime(ts, utc=True).tz_convert("Europe/Madrid")
         minutes_in_day = idx_local.hour * 60 + idx_local.minute
-        session_mask = (
-            ((minutes_in_day >= 8 * 60 + 50) & (minutes_in_day <= 10 * 60))
-            | ((minutes_in_day >= 15 * 60 + 20) & (minutes_in_day <= 16 * 60 + 30))
+        session_mask = ((minutes_in_day >= 8 * 60 + 50) & (minutes_in_day <= 10 * 60)) | (
+            (minutes_in_day >= 15 * 60 + 20) & (minutes_in_day <= 16 * 60 + 30)
         )
 
         day_index = idx_local.normalize()
@@ -333,8 +331,12 @@ class StrategyMicrostructureReversal:
         atr_filter &= atr <= 2.3 * atr_intraday_median.to_numpy()
 
         vol_series = pd.Series(v, dtype=float)
-        vol_q_low = vol_series.groupby(day_index).transform(lambda x: x.quantile(p.vol_percentile_low))
-        vol_q_high = vol_series.groupby(day_index).transform(lambda x: x.quantile(p.vol_percentile_high))
+        vol_q_low = vol_series.groupby(day_index).transform(
+            lambda x: x.quantile(p.vol_percentile_low)
+        )
+        vol_q_high = vol_series.groupby(day_index).transform(
+            lambda x: x.quantile(p.vol_percentile_high)
+        )
         vol_filter = (vol_series >= vol_q_low) & (vol_series <= vol_q_high)
 
         entries_long &= session_mask & atr_filter & vol_filter.to_numpy()
@@ -376,8 +378,18 @@ class StrategyMicrostructureReversal:
         atr_stop_dist = self.params.atr_stop_mult * atr_entry
         structure_buffer = self.params.structure_buffer_atr * atr_entry
 
-        swing_low = pd.Series(low).rolling(self.params.structure_stop_lookback, min_periods=1).min().to_numpy()
-        swing_high = pd.Series(h).rolling(self.params.structure_stop_lookback, min_periods=1).max().to_numpy()
+        swing_low = (
+            pd.Series(low)
+            .rolling(self.params.structure_stop_lookback, min_periods=1)
+            .min()
+            .to_numpy()
+        )
+        swing_high = (
+            pd.Series(h)
+            .rolling(self.params.structure_stop_lookback, min_periods=1)
+            .max()
+            .to_numpy()
+        )
 
         atr_sl_long = c - atr_stop_dist
         atr_sl_short = c + atr_stop_dist

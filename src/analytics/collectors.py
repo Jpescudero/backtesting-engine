@@ -1,4 +1,5 @@
 """Colección de métricas incrementales para backtests."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -48,14 +49,11 @@ class MetricCollector(Protocol):
 
     name: str
 
-    def on_event(self, event: EventPayload) -> None:
-        ...
+    def on_event(self, event: EventPayload) -> None: ...
 
-    def on_bar(self, bar: BarSnapshot) -> None:
-        ...
+    def on_bar(self, bar: BarSnapshot) -> None: ...
 
-    def on_trade(self, trade: TradeSnapshot) -> None:
-        ...
+    def on_trade(self, trade: TradeSnapshot) -> None: ...
 
     def to_frame(self) -> pd.DataFrame:
         """Devuelve el contenido del collector en formato tabular."""

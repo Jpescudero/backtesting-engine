@@ -1,6 +1,5 @@
 import numpy as np
 import pandas as pd
-
 from src.analytics.reporting import equity_to_series
 from src.data.feeds import OHLCVArrays
 from src.engine.core import BacktestResult

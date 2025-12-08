@@ -5,7 +5,6 @@ from pathlib import Path
 from typing import Dict, Tuple
 
 import matplotlib.pyplot as plt
-
 from src.analytics.backtest_output import save_backtest_summary_to_excel
 from src.analytics.metrics import equity_curve_metrics, trades_metrics
 from src.analytics.plots import plot_equity_curve, plot_trades_per_month

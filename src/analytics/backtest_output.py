@@ -12,14 +12,13 @@ Diseño "ultralight":
 
 from __future__ import annotations
 
+import json
 from dataclasses import asdict, is_dataclass
 from pathlib import Path
 from typing import Any, Dict, Mapping, Optional, Tuple
 
-import json
 import numpy as np
 import pandas as pd
-
 
 # Límites para no matar Excel ni el tiempo de escritura
 MAX_EQUITY_ROWS_EXCEL = 5_000
@@ -304,9 +303,7 @@ def save_backtest_summary_to_excel(
 
     meta_all = meta_items + meta_extra_info
 
-    meta_df = pd.DataFrame(
-        [{"key": str(k), "value": v} for k, v in meta_all]
-    )
+    meta_df = pd.DataFrame([{"key": str(k), "value": v} for k, v in meta_all])
 
     with pd.ExcelWriter(excel_path) as writer:
         equity_df.to_excel(writer, sheet_name="equity_sample")
@@ -316,5 +313,3 @@ def save_backtest_summary_to_excel(
         meta_df.to_excel(writer, sheet_name="meta", index=False)
 
     return excel_path, json_path
-
-

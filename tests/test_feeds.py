@@ -1,5 +1,4 @@
 import numpy as np
-
 from src.data.feeds import OHLCVArrays, _concat_ohlcv_arrays, _sort_and_dedup_ohlcv
 
 

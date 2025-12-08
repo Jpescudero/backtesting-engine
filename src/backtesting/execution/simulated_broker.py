@@ -25,7 +25,9 @@ class SimulatedBroker(Broker):
         self.cash = initial_cash
         self.max_notional_per_order = max_notional_per_order
 
-    def process_orders(self, orders: Sequence[OrderRequest], data: MarketDataBatch) -> Sequence[OrderFill]:
+    def process_orders(
+        self, orders: Sequence[OrderRequest], data: MarketDataBatch
+    ) -> Sequence[OrderFill]:
         fills: List[OrderFill] = []
         for order in orders:
             order.validate(max_index=data.size)
@@ -36,12 +38,14 @@ class SimulatedBroker(Broker):
 
             if self.max_notional_per_order is not None and notional > self.max_notional_per_order:
                 raise ValueError(
-                    f"Límite de riesgo excedido: notional {notional:.2f} > {self.max_notional_per_order:.2f}"
+                    "Límite de riesgo excedido: "
+                    f"notional {notional:.2f} > {self.max_notional_per_order:.2f}"
                 )
 
             if order.side == "buy" and notional > self.cash:
                 raise ValueError(
-                    f"Fondos insuficientes para comprar {order.quantity} @ {price:.2f}; disponible {self.cash:.2f}"
+                    "Fondos insuficientes para comprar "
+                    f"{order.quantity} @ {price:.2f}; disponible {self.cash:.2f}"
                 )
 
             fills.append(

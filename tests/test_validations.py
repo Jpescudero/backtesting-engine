@@ -5,7 +5,6 @@ from pathlib import Path
 
 import numpy as np
 import pytest
-
 from src.backtesting.core.models import MarketDataBatch, OrderRequest
 from src.backtesting.data.npz_loader import NPZDataLoader
 from src.backtesting.execution.simulated_broker import SimulatedBroker
@@ -29,7 +28,15 @@ def test_npz_loader_rejects_nans(tmp_path: Path) -> None:
     base_dir = tmp_path / "TEST"
     base_dir.mkdir(parents=True)
     ts = np.array([1_700_000_000_000_000_000, 1_700_000_060_000_000_000], dtype=np.int64)
-    np.savez(base_dir / "TEST_1m.npz", ts=ts, o=np.arange(2), h=np.arange(2), l=np.arange(2), c=np.array([1.0, np.nan]), v=np.arange(2))
+    np.savez(
+        base_dir / "TEST_1m.npz",
+        ts=ts,
+        o=np.arange(2),
+        h=np.arange(2),
+        l=np.arange(2),
+        c=np.array([1.0, np.nan]),
+        v=np.arange(2),
+    )
 
     loader = NPZDataLoader(symbol="TEST", timeframe="1m", base_dir=base_dir)
 
@@ -41,7 +48,15 @@ def test_npz_loader_rejects_unsorted_timestamps(tmp_path: Path) -> None:
     base_dir = tmp_path / "TEST"
     base_dir.mkdir(parents=True)
     ts = np.array([2, 1], dtype=np.int64)
-    np.savez(base_dir / "TEST_1m.npz", ts=ts, o=np.arange(2), h=np.arange(2), l=np.arange(2), c=np.arange(2), v=np.arange(2))
+    np.savez(
+        base_dir / "TEST_1m.npz",
+        ts=ts,
+        o=np.arange(2),
+        h=np.arange(2),
+        l=np.arange(2),
+        c=np.arange(2),
+        v=np.arange(2),
+    )
 
     loader = NPZDataLoader(symbol="TEST", timeframe="1m", base_dir=base_dir)
 
@@ -53,7 +68,15 @@ def test_npz_loader_detects_critical_gaps(tmp_path: Path) -> None:
     base_dir = tmp_path / "TEST"
     base_dir.mkdir(parents=True)
     ts = np.array([0, 60_000_000_000, 1_200_000_000_000], dtype=np.int64)
-    np.savez(base_dir / "TEST_1m.npz", ts=ts, o=np.arange(3), h=np.arange(3), l=np.arange(3), c=np.arange(3), v=np.arange(3))
+    np.savez(
+        base_dir / "TEST_1m.npz",
+        ts=ts,
+        o=np.arange(3),
+        h=np.arange(3),
+        l=np.arange(3),
+        c=np.arange(3),
+        v=np.arange(3),
+    )
 
     loader = NPZDataLoader(symbol="TEST", timeframe="1m", base_dir=base_dir)
 

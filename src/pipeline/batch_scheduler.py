@@ -15,7 +15,6 @@ from pathlib import Path
 from typing import Iterable, Mapping, MutableMapping, Sequence
 
 import pandas as pd
-
 from src.config.paths import REPORTS_DIR
 from src.pipeline.backtest_runner import (
     BacktestArtifacts,
@@ -148,7 +147,9 @@ def schedule_jobs(
         _limit_memory(memory_limit_mb)
         return [_run_job(job) for job in jobs]
 
-    with mp.Pool(processes=max_workers, initializer=_limit_memory, initargs=(memory_limit_mb,)) as pool:
+    with mp.Pool(
+        processes=max_workers, initializer=_limit_memory, initargs=(memory_limit_mb,)
+    ) as pool:
         results = pool.map(_run_job, jobs)
     return results
 
@@ -174,7 +175,9 @@ def build_results_dataframe(
             "reports_dir": str(cfg.reports_dir) if cfg.reports_dir else None,
         }
 
-        record.update({f"param.{k}": v for k, v in _strategy_params_dict(cfg.strategy_params).items()})
+        record.update(
+            {f"param.{k}": v for k, v in _strategy_params_dict(cfg.strategy_params).items()}
+        )
         record.update(_flatten_metrics("equity", outcome.artifacts.equity_stats))
         record.update(_flatten_metrics("trade", outcome.artifacts.trade_stats))
         records.append(record)

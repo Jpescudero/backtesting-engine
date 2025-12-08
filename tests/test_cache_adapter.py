@@ -4,10 +4,9 @@ import time
 from pathlib import Path
 
 import pytest
+from src.data.cache_adapter import MarketDataAdapter
 
 pd = pytest.importorskip("pandas")
-
-from src.data.cache_adapter import MarketDataAdapter
 
 
 @pytest.fixture()
@@ -33,7 +32,9 @@ def sample_parquet(tmp_path: Path) -> Path:
 
 def test_load_normalizes_and_caches(sample_parquet: Path, tmp_path: Path) -> None:
     cache_dir = tmp_path / "cache"
-    adapter = MarketDataAdapter(parquet_root=sample_parquet, cache_dir=cache_dir, memory_cache_size=2)
+    adapter = MarketDataAdapter(
+        parquet_root=sample_parquet, cache_dir=cache_dir, memory_cache_size=2
+    )
 
     df = adapter.load("TEST", "2023-01-01", "2023-01-01 01:00", ["bid", "ask"], "1m")
 
@@ -46,7 +47,9 @@ def test_load_normalizes_and_caches(sample_parquet: Path, tmp_path: Path) -> Non
 
 
 def test_memory_cache_eviction(sample_parquet: Path, tmp_path: Path) -> None:
-    adapter = MarketDataAdapter(parquet_root=sample_parquet, cache_dir=tmp_path / "cache2", memory_cache_size=2)
+    adapter = MarketDataAdapter(
+        parquet_root=sample_parquet, cache_dir=tmp_path / "cache2", memory_cache_size=2
+    )
 
     adapter.load("TEST", "2023-01-01", "2023-01-01 00:30", ["bid"], "1m")
     first_key = next(iter(adapter._memory_cache._store))
@@ -58,7 +61,9 @@ def test_memory_cache_eviction(sample_parquet: Path, tmp_path: Path) -> None:
 
 
 def test_warm_load_is_faster_and_lighter(sample_parquet: Path, tmp_path: Path) -> None:
-    adapter = MarketDataAdapter(parquet_root=sample_parquet, cache_dir=tmp_path / "cache3", memory_cache_size=2)
+    adapter = MarketDataAdapter(
+        parquet_root=sample_parquet, cache_dir=tmp_path / "cache3", memory_cache_size=2
+    )
 
     start = "2023-01-01"
     end = "2023-01-01 01:00"

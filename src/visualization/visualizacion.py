@@ -4,7 +4,6 @@ from __future__ import annotations
 from pathlib import Path
 
 import mplfinance as mpf
-
 from data_utils import load_all_ticks, make_ohlcv
 
 
@@ -36,8 +35,8 @@ def plot_year_candles(
         df_ticks,
         timeframe=timeframe,
         price_col="mid",
-        volume_col=None,          # si tienes volumen, pon aquí el nombre
-        include_n_ticks=True,     # opcional: nº de ticks por barra
+        volume_col=None,  # si tienes volumen, pon aquí el nombre
+        include_n_ticks=True,  # opcional: nº de ticks por barra
     )
 
     if ohlcv.empty:

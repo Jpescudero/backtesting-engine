@@ -35,9 +35,15 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         choices=["microstructure_reversal", "microstructure_sweep"],
         help="Estrategia a ejecutar",
     )
-    parser.add_argument("--ema-short", type=int, default=20, help="EMA corta para filtro de tendencia")
-    parser.add_argument("--ema-long", type=int, default=50, help="EMA larga para filtro de tendencia")
-    parser.add_argument("--atr-period", type=int, default=20, help="Periodo ATR para normalizar rangos")
+    parser.add_argument(
+        "--ema-short", type=int, default=20, help="EMA corta para filtro de tendencia"
+    )
+    parser.add_argument(
+        "--ema-long", type=int, default=50, help="EMA larga para filtro de tendencia"
+    )
+    parser.add_argument(
+        "--atr-period", type=int, default=20, help="Periodo ATR para normalizar rangos"
+    )
     parser.add_argument(
         "--atr-timeframe",
         type=str,
@@ -50,48 +56,179 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         default=10,
         help="Periodo ATR a usar en el timeframe dedicado",
     )
-    parser.add_argument("--min-pullback-atr", type=float, default=0.3, help="Retroceso mínimo en ATR")
-    parser.add_argument("--max-pullback-atr", type=float, default=1.3, help="Retroceso máximo en ATR")
-    parser.add_argument("--max-pullback-bars", type=int, default=12, help="Velas máximas del pullback")
-    parser.add_argument("--exhaustion-close-min", type=float, default=0.35, help="Posición mínima del cierre de la vela de agotamiento")
-    parser.add_argument("--exhaustion-close-max", type=float, default=0.65, help="Posición máxima del cierre de la vela de agotamiento")
-    parser.add_argument("--exhaustion-body-max-ratio", type=float, default=0.5, help="Relación máxima cuerpo/rango para la vela de agotamiento")
-    parser.add_argument("--shift-body-atr", type=float, default=0.45, help="Mínimo cuerpo de la vela shift en ATR")
-    parser.add_argument("--structure-break-lookback", type=int, default=3, help="Ventana de ruptura de microestructura")
+    parser.add_argument(
+        "--min-pullback-atr", type=float, default=0.3, help="Retroceso mínimo en ATR"
+    )
+    parser.add_argument(
+        "--max-pullback-atr", type=float, default=1.3, help="Retroceso máximo en ATR"
+    )
+    parser.add_argument(
+        "--max-pullback-bars", type=int, default=12, help="Velas máximas del pullback"
+    )
+    parser.add_argument(
+        "--exhaustion-close-min",
+        type=float,
+        default=0.35,
+        help="Posición mínima del cierre de la vela de agotamiento",
+    )
+    parser.add_argument(
+        "--exhaustion-close-max",
+        type=float,
+        default=0.65,
+        help="Posición máxima del cierre de la vela de agotamiento",
+    )
+    parser.add_argument(
+        "--exhaustion-body-max-ratio",
+        type=float,
+        default=0.5,
+        help="Relación máxima cuerpo/rango para la vela de agotamiento",
+    )
+    parser.add_argument(
+        "--shift-body-atr", type=float, default=0.45, help="Mínimo cuerpo de la vela shift en ATR"
+    )
+    parser.add_argument(
+        "--structure-break-lookback",
+        type=int,
+        default=3,
+        help="Ventana de ruptura de microestructura",
+    )
 
     # Parámetros Microstructure Sweep
-    parser.add_argument("--sweep-lookback", type=int, default=SweepParams.sweep_lookback, help="Ventana de lookback para mínimos previos")
-    parser.add_argument("--min-sweep-break-atr", type=float, default=SweepParams.min_sweep_break_atr, help="Mínima ruptura del mínimo previo en ATR")
-    parser.add_argument("--min-lower-wick-body-ratio", type=float, default=SweepParams.min_lower_wick_body_ratio, help="Relación mínima mecha/cuerpo")
-    parser.add_argument("--min-sweep-range-atr", type=float, default=SweepParams.min_sweep_range_atr, help="Rango mínimo de la vela de barrida en ATR")
-    parser.add_argument("--confirm-body-atr", type=float, default=SweepParams.confirm_body_atr, help="Cuerpo mínimo de la vela de confirmación en ATR")
-    parser.add_argument("--no-confirm-close-above-mid", action="store_false", dest="confirm_close_above_mid", help="Permitir cierres por debajo de la mitad de la vela de barrida")
+    parser.add_argument(
+        "--sweep-lookback",
+        type=int,
+        default=SweepParams.sweep_lookback,
+        help="Ventana de lookback para mínimos previos",
+    )
+    parser.add_argument(
+        "--min-sweep-break-atr",
+        type=float,
+        default=SweepParams.min_sweep_break_atr,
+        help="Mínima ruptura del mínimo previo en ATR",
+    )
+    parser.add_argument(
+        "--min-lower-wick-body-ratio",
+        type=float,
+        default=SweepParams.min_lower_wick_body_ratio,
+        help="Relación mínima mecha/cuerpo",
+    )
+    parser.add_argument(
+        "--min-sweep-range-atr",
+        type=float,
+        default=SweepParams.min_sweep_range_atr,
+        help="Rango mínimo de la vela de barrida en ATR",
+    )
+    parser.add_argument(
+        "--confirm-body-atr",
+        type=float,
+        default=SweepParams.confirm_body_atr,
+        help="Cuerpo mínimo de la vela de confirmación en ATR",
+    )
+    parser.add_argument(
+        "--no-confirm-close-above-mid",
+        action="store_false",
+        dest="confirm_close_above_mid",
+        help="Permitir cierres por debajo de la mitad de la vela de barrida",
+    )
     parser.set_defaults(confirm_close_above_mid=SweepParams.confirm_close_above_mid)
-    parser.add_argument("--volume-period", type=int, default=SweepParams.volume_period, help="Periodo para volumen medio")
-    parser.add_argument("--min-rvol", type=float, default=SweepParams.min_rvol, help="Volumen relativo mínimo")
-    parser.add_argument("--vol-percentile-min", type=float, default=SweepParams.vol_percentile_min, help="Percentil inferior de volumen intradía")
-    parser.add_argument("--vol-percentile-max", type=float, default=SweepParams.vol_percentile_max, help="Percentil superior de volumen intradía")
-    parser.add_argument("--no-trend-filter", action="store_false", dest="use_trend_filter", help="Desactivar filtro de tendencia EMA")
+    parser.add_argument(
+        "--volume-period",
+        type=int,
+        default=SweepParams.volume_period,
+        help="Periodo para volumen medio",
+    )
+    parser.add_argument(
+        "--min-rvol", type=float, default=SweepParams.min_rvol, help="Volumen relativo mínimo"
+    )
+    parser.add_argument(
+        "--vol-percentile-min",
+        type=float,
+        default=SweepParams.vol_percentile_min,
+        help="Percentil inferior de volumen intradía",
+    )
+    parser.add_argument(
+        "--vol-percentile-max",
+        type=float,
+        default=SweepParams.vol_percentile_max,
+        help="Percentil superior de volumen intradía",
+    )
+    parser.add_argument(
+        "--no-trend-filter",
+        action="store_false",
+        dest="use_trend_filter",
+        help="Desactivar filtro de tendencia EMA",
+    )
     parser.set_defaults(use_trend_filter=SweepParams.use_trend_filter)
-    parser.add_argument("--max-atr-mult-intraday", type=float, default=SweepParams.max_atr_mult_intraday, help="Umbral máximo de ATR intradía")
-    parser.add_argument("--max-trades-per-day", type=int, default=SweepParams.max_trades_per_day, help="Máximo de operaciones diarias")
-    parser.add_argument("--sweep-max-holding-bars", type=int, default=SweepParams.max_holding_bars, help="Máximo de velas en posición para Sweep")
-    parser.add_argument("--atr-stop-mult", type=float, default=SweepParams.atr_stop_mult, help="Buffer ATR para stop loss")
-    parser.add_argument("--rr-multiple", type=float, default=SweepParams.rr_multiple, help="Multiplicador RR para TP")
-    parser.add_argument("--config-file", type=str, default=None,
-                        help="Ruta a archivo de configuración simple key=value")
+    parser.add_argument(
+        "--max-atr-mult-intraday",
+        type=float,
+        default=SweepParams.max_atr_mult_intraday,
+        help="Umbral máximo de ATR intradía",
+    )
+    parser.add_argument(
+        "--max-trades-per-day",
+        type=int,
+        default=SweepParams.max_trades_per_day,
+        help="Máximo de operaciones diarias",
+    )
+    parser.add_argument(
+        "--sweep-max-holding-bars",
+        type=int,
+        default=SweepParams.max_holding_bars,
+        help="Máximo de velas en posición para Sweep",
+    )
+    parser.add_argument(
+        "--atr-stop-mult",
+        type=float,
+        default=SweepParams.atr_stop_mult,
+        help="Buffer ATR para stop loss",
+    )
+    parser.add_argument(
+        "--rr-multiple",
+        type=float,
+        default=SweepParams.rr_multiple,
+        help="Multiplicador RR para TP",
+    )
+    parser.add_argument(
+        "--config-file",
+        type=str,
+        default=None,
+        help="Ruta a archivo de configuración simple key=value",
+    )
     parser.add_argument("--seed", type=int, default=None, help="Seed global para reproducibilidad")
-    parser.add_argument("--snapshot-interval", type=int, default=None,
-                        help="Guardar snapshots de estado cada N eventos")
-    parser.add_argument("--snapshot-path", type=str, default=None, help="Ruta personalizada para snapshots")
-    parser.add_argument("--resume-snapshot", type=str, default=None,
-                        help="Ruta a snapshot desde el que reanudar el backtest")
-    parser.add_argument("--run-metadata", type=str, default=None,
-                        help="Ruta donde escribir los metadatos completos del run")
-    parser.add_argument("--replay-metadata", type=str, default=None,
-                        help="Ruta a metadatos previos para reproducir la ejecución")
-    parser.add_argument("--initial-cash", type=float, default=None,
-                        help="Capital inicial; si no se indica se toma del config o 100k")
+    parser.add_argument(
+        "--snapshot-interval",
+        type=int,
+        default=None,
+        help="Guardar snapshots de estado cada N eventos",
+    )
+    parser.add_argument(
+        "--snapshot-path", type=str, default=None, help="Ruta personalizada para snapshots"
+    )
+    parser.add_argument(
+        "--resume-snapshot",
+        type=str,
+        default=None,
+        help="Ruta a snapshot desde el que reanudar el backtest",
+    )
+    parser.add_argument(
+        "--run-metadata",
+        type=str,
+        default=None,
+        help="Ruta donde escribir los metadatos completos del run",
+    )
+    parser.add_argument(
+        "--replay-metadata",
+        type=str,
+        default=None,
+        help="Ruta a metadatos previos para reproducir la ejecución",
+    )
+    parser.add_argument(
+        "--initial-cash",
+        type=float,
+        default=None,
+        help="Capital inicial; si no se indica se toma del config o 100k",
+    )
     parser.add_argument("--commission", type=float, default=1.0)
     parser.add_argument("--trade-size", type=float, default=1.0)
     parser.add_argument("--slippage", type=float, default=0.0)
@@ -99,10 +236,18 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--tp-pct", type=float, default=0.02)
     parser.add_argument("--max-bars", type=int, default=60, help="Máximo de velas en una operación")
     parser.add_argument("--entry-threshold", type=float, default=0.0)
-    parser.add_argument("--train-years", type=str, default=None,
-                        help="Años de entrenamiento separados por comas, p.ej. 2019,2020")
-    parser.add_argument("--test-years", type=str, default=None,
-                        help="Años de test separados por comas, p.ej. 2021,2022")
+    parser.add_argument(
+        "--train-years",
+        type=str,
+        default=None,
+        help="Años de entrenamiento separados por comas, p.ej. 2019,2020",
+    )
+    parser.add_argument(
+        "--test-years",
+        type=str,
+        default=None,
+        help="Años de test separados por comas, p.ej. 2021,2022",
+    )
     parser.add_argument(
         "--use-test-years",
         action="store_true",
@@ -112,7 +257,9 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--no-report-files", action="store_true", help="No generar Excel/JSON")
     parser.add_argument("--no-main-plots", action="store_true", help="No generar plots principales")
     parser.add_argument("--no-trade-plots", action="store_true", help="No generar plots de trades")
-    parser.add_argument("--headless", action="store_true", help="Usar backend Agg y no mostrar ventanas")
+    parser.add_argument(
+        "--headless", action="store_true", help="Usar backend Agg y no mostrar ventanas"
+    )
     return parser.parse_args(argv)
 
 
@@ -160,11 +307,13 @@ def print_timings(timings: dict) -> None:
 
 def _print_run_context(run_config: BacktestRunConfig) -> None:
     cfg = run_config.backtest_config
+    atr_timeframe = run_config.strategy_params.atr_timeframe
+    atr_period = run_config.strategy_params.atr_timeframe_period
     if run_config.strategy_name == "microstructure_sweep":
         params_summary = " | ".join(
             [
                 f"EMA {run_config.strategy_params.ema_short}/{run_config.strategy_params.ema_long}",
-                f"ATR tf {run_config.strategy_params.atr_timeframe} p{run_config.strategy_params.atr_timeframe_period}",
+                f"ATR tf {atr_timeframe} p{atr_period}",
                 f"ATR {run_config.strategy_params.atr_period}",
                 f"sweep lb {run_config.strategy_params.sweep_lookback}",
                 f"wick≥{run_config.strategy_params.min_lower_wick_body_ratio}×cuerpo",
@@ -173,12 +322,16 @@ def _print_run_context(run_config: BacktestRunConfig) -> None:
             ]
         )
     else:
+        pullback_range = (
+            f"pullback {run_config.strategy_params.min_pullback_atr}-"
+            f"{run_config.strategy_params.max_pullback_atr} ATR"
+        )
         params_summary = " | ".join(
             [
                 f"EMA {run_config.strategy_params.ema_short}/{run_config.strategy_params.ema_long}",
-                f"ATR tf {run_config.strategy_params.atr_timeframe} p{run_config.strategy_params.atr_timeframe_period}",
+                f"ATR tf {atr_timeframe} p{atr_period}",
                 f"ATR {run_config.strategy_params.atr_period}",
-                f"pullback {run_config.strategy_params.min_pullback_atr}-{run_config.strategy_params.max_pullback_atr} ATR",
+                pullback_range,
                 f"shift ≥{run_config.strategy_params.shift_body_atr} ATR",
             ]
         )
@@ -200,10 +353,17 @@ def _print_run_context(run_config: BacktestRunConfig) -> None:
             "Params estrategia",
             params_summary,
         ),
-        ("Años train", ",".join(map(str, run_config.train_years)) if run_config.train_years else "(todos)"),
+        (
+            "Años train",
+            ",".join(map(str, run_config.train_years)) if run_config.train_years else "(todos)",
+        ),
         (
             "Años test",
-            ",".join(map(str, run_config.test_years)) if run_config.test_years else "(no definidos)",
+            (
+                ",".join(map(str, run_config.test_years))
+                if run_config.test_years
+                else "(no definidos)"
+            ),
         ),
         ("Usar años test", "sí" if run_config.use_test_years else "no"),
         ("Generar reportes", "sí" if run_config.generate_report_files else "no"),
@@ -319,17 +479,31 @@ def main(argv: Iterable[str] | None = None) -> None:
 
     symbol = _get_setting(args.symbol, config_file_values, "symbol", "NDXm")
     timeframe = _get_setting(args.timeframe, config_file_values, "timeframe", "1m")
-    strategy_name = _get_setting(args.strategy, config_file_values, "strategy", "microstructure_reversal")
+    strategy_name = _get_setting(
+        args.strategy, config_file_values, "strategy", "microstructure_reversal"
+    )
 
     if meta_config:
         symbol = meta_config.symbol
         timeframe = meta_config.timeframe
         strategy_name = meta_config.strategy_name
 
-    initial_cash = _get_setting(args.initial_cash, config_file_values, "initial_cash", 100_000.0, float)
-    train_years = _get_setting(_parse_years(args.train_years), config_file_values, "train_years", None, _parse_years)
-    test_years = _get_setting(_parse_years(args.test_years), config_file_values, "test_years", None, _parse_years)
-    use_test_years = _get_setting(args.use_test_years, config_file_values, "use_test_years", False, lambda v: str(v).lower() == "true")
+    initial_cash = _get_setting(
+        args.initial_cash, config_file_values, "initial_cash", 100_000.0, float
+    )
+    train_years = _get_setting(
+        _parse_years(args.train_years), config_file_values, "train_years", None, _parse_years
+    )
+    test_years = _get_setting(
+        _parse_years(args.test_years), config_file_values, "test_years", None, _parse_years
+    )
+    use_test_years = _get_setting(
+        args.use_test_years,
+        config_file_values,
+        "use_test_years",
+        False,
+        lambda v: str(v).lower() == "true",
+    )
 
     if meta_config:
         train_years = meta_config.train_years
@@ -341,10 +515,21 @@ def main(argv: Iterable[str] | None = None) -> None:
     elif strategy_name == "microstructure_sweep":
         sweep_defaults = SweepParams()
         strategy_params = SweepParams(
-            ema_short=_get_setting(args.ema_short, config_file_values, "ema_short", sweep_defaults.ema_short, int),
-            ema_long=_get_setting(args.ema_long, config_file_values, "ema_long", sweep_defaults.ema_long, int),
-            atr_period=_get_setting(args.atr_period, config_file_values, "atr_period", sweep_defaults.atr_period, int),
-            atr_timeframe=_get_setting(args.atr_timeframe, config_file_values, "atr_timeframe", sweep_defaults.atr_timeframe),
+            ema_short=_get_setting(
+                args.ema_short, config_file_values, "ema_short", sweep_defaults.ema_short, int
+            ),
+            ema_long=_get_setting(
+                args.ema_long, config_file_values, "ema_long", sweep_defaults.ema_long, int
+            ),
+            atr_period=_get_setting(
+                args.atr_period, config_file_values, "atr_period", sweep_defaults.atr_period, int
+            ),
+            atr_timeframe=_get_setting(
+                args.atr_timeframe,
+                config_file_values,
+                "atr_timeframe",
+                sweep_defaults.atr_timeframe,
+            ),
             atr_timeframe_period=_get_setting(
                 args.atr_timeframe_period,
                 config_file_values,
@@ -353,7 +538,11 @@ def main(argv: Iterable[str] | None = None) -> None:
                 int,
             ),
             sweep_lookback=_get_setting(
-                args.sweep_lookback, config_file_values, "sweep_lookback", sweep_defaults.sweep_lookback, int
+                args.sweep_lookback,
+                config_file_values,
+                "sweep_lookback",
+                sweep_defaults.sweep_lookback,
+                int,
             ),
             min_sweep_break_atr=_get_setting(
                 args.min_sweep_break_atr,
@@ -377,7 +566,11 @@ def main(argv: Iterable[str] | None = None) -> None:
                 float,
             ),
             confirm_body_atr=_get_setting(
-                args.confirm_body_atr, config_file_values, "confirm_body_atr", sweep_defaults.confirm_body_atr, float
+                args.confirm_body_atr,
+                config_file_values,
+                "confirm_body_atr",
+                sweep_defaults.confirm_body_atr,
+                float,
             ),
             confirm_close_above_mid=_get_setting(
                 args.confirm_close_above_mid,
@@ -387,9 +580,15 @@ def main(argv: Iterable[str] | None = None) -> None:
                 lambda v: str(v).lower() == "true",
             ),
             volume_period=_get_setting(
-                args.volume_period, config_file_values, "volume_period", sweep_defaults.volume_period, int
+                args.volume_period,
+                config_file_values,
+                "volume_period",
+                sweep_defaults.volume_period,
+                int,
             ),
-            min_rvol=_get_setting(args.min_rvol, config_file_values, "min_rvol", sweep_defaults.min_rvol, float),
+            min_rvol=_get_setting(
+                args.min_rvol, config_file_values, "min_rvol", sweep_defaults.min_rvol, float
+            ),
             vol_percentile_min=_get_setting(
                 args.vol_percentile_min,
                 config_file_values,
@@ -433,10 +632,18 @@ def main(argv: Iterable[str] | None = None) -> None:
                 int,
             ),
             atr_stop_mult=_get_setting(
-                args.atr_stop_mult, config_file_values, "atr_stop_mult", sweep_defaults.atr_stop_mult, float
+                args.atr_stop_mult,
+                config_file_values,
+                "atr_stop_mult",
+                sweep_defaults.atr_stop_mult,
+                float,
             ),
             rr_multiple=_get_setting(
-                args.rr_multiple, config_file_values, "rr_multiple", sweep_defaults.rr_multiple, float
+                args.rr_multiple,
+                config_file_values,
+                "rr_multiple",
+                sweep_defaults.rr_multiple,
+                float,
             ),
         )
     else:
@@ -476,11 +683,15 @@ def main(argv: Iterable[str] | None = None) -> None:
         if args.snapshot_interval is not None
         else (meta_config.snapshot_interval if meta_config else None)
     )
-    snapshot_path = Path(args.snapshot_path) if args.snapshot_path else (
-        meta_config.snapshot_path if meta_config else None
+    snapshot_path = (
+        Path(args.snapshot_path)
+        if args.snapshot_path
+        else (meta_config.snapshot_path if meta_config else None)
     )
-    resume_snapshot = Path(args.resume_snapshot) if args.resume_snapshot else (
-        meta_config.resume_snapshot if meta_config else None
+    resume_snapshot = (
+        Path(args.resume_snapshot)
+        if args.resume_snapshot
+        else (meta_config.resume_snapshot if meta_config else None)
     )
     run_metadata_path = Path(args.run_metadata) if args.run_metadata else None
     replay_metadata_path = Path(args.replay_metadata) if args.replay_metadata else None
@@ -556,12 +767,10 @@ def main(argv: Iterable[str] | None = None) -> None:
         print(f"Plot equity/trades: {_describe_artifact(artifacts.reports.equity_path)}")
     if run_config.generate_trade_plots:
         print(
-            "Plot mejores trades: "
-            f"{_describe_artifact(artifacts.reports.best_trade_plot_path)}"
+            "Plot mejores trades: " f"{_describe_artifact(artifacts.reports.best_trade_plot_path)}"
         )
         print(
-            "Plot peores trades: "
-            f"{_describe_artifact(artifacts.reports.worst_trade_plot_path)}"
+            "Plot peores trades: " f"{_describe_artifact(artifacts.reports.worst_trade_plot_path)}"
         )
 
     print_timings(artifacts.timings)

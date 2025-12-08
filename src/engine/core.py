@@ -7,37 +7,37 @@ from typing import Any, Dict, List, Mapping, Tuple
 
 import numpy as np
 from numba import njit
-
 from src.data.feeds import OHLCVArrays
-
 
 # =====================
 # Configuración & Resultados
 # =====================
+
 
 @dataclass
 class BacktestConfig:
     """
     Configuración básica del backtest.
     """
+
     initial_cash: float = 100_000.0
-    commission_per_trade: float = 1.0   # comisión fija por operación (entrada o salida)
-    trade_size: float = 1.0             # contratos/unidades por operación
-    min_trade_size: float = 0.01        # tamaño mínimo permitido por contrato/lote
-    max_trade_size: float = 1000.0      # límite superior para el tamaño por operación
-    slippage: float = 0.0               # slippage en puntos
+    commission_per_trade: float = 1.0  # comisión fija por operación (entrada o salida)
+    trade_size: float = 1.0  # contratos/unidades por operación
+    min_trade_size: float = 0.01  # tamaño mínimo permitido por contrato/lote
+    max_trade_size: float = 1000.0  # límite superior para el tamaño por operación
+    slippage: float = 0.0  # slippage en puntos
 
     # Gestión de riesgo
-    sl_pct: float = 0.01                # stop loss a -1%
-    tp_pct: float = 0.02                # take profit a +2%
-    risk_per_trade_pct: float = 0.0     # riesgo fijo por trade (0.0025 => 0.25%)
-    atr_stop_mult: float = 0.0          # múltiplo de ATR para calcular el SL
-    atr_tp_mult: float = 0.0            # múltiplo de ATR para calcular el TP
-    point_value: float = 1.0            # valor monetario de 1 punto para 1.0 contrato
-    max_bars_in_trade: int = 60         # duración máxima del trade en barras
+    sl_pct: float = 0.01  # stop loss a -1%
+    tp_pct: float = 0.02  # take profit a +2%
+    risk_per_trade_pct: float = 0.0  # riesgo fijo por trade (0.0025 => 0.25%)
+    atr_stop_mult: float = 0.0  # múltiplo de ATR para calcular el SL
+    atr_tp_mult: float = 0.0  # múltiplo de ATR para calcular el TP
+    point_value: float = 1.0  # valor monetario de 1 punto para 1.0 contrato
+    max_bars_in_trade: int = 60  # duración máxima del trade en barras
 
     # Parámetros de la estrategia de ejemplo
-    entry_threshold: float = 0.001      # 0.1% de subida respecto al cierre anterior para entrar
+    entry_threshold: float = 0.001  # 0.1% de subida respecto al cierre anterior para entrar
 
 
 @dataclass
@@ -45,11 +45,12 @@ class BacktestResult:
     """
     Resultado del backtest.
     """
-    equity: np.ndarray                  # serie de equity
-    cash: float                         # efectivo final
-    position: float                     # posición final
-    trade_log: Dict[str, np.ndarray]    # arrays con info de los trades
-    extra: Dict[str, Any]               # parámetros y metadatos
+
+    equity: np.ndarray  # serie de equity
+    cash: float  # efectivo final
+    position: float  # posición final
+    trade_log: Dict[str, np.ndarray]  # arrays con info de los trades
+    extra: Dict[str, Any]  # parámetros y metadatos
     snapshots: List["BacktestSnapshot"] | None = None
     state_log: "BacktestStateLog" | None = None
 
@@ -179,6 +180,7 @@ def build_snapshots(
 # =====================
 # Estrategia de ejemplo (Numba)
 # =====================
+
 
 @njit
 def _example_strategy_long_on_up_move(
@@ -357,6 +359,7 @@ def compute_position_size(
 # Motor de backtest con SL/TP & duración (Numba)
 # =====================
 
+
 @njit
 def _backtest_with_risk(
     ts: np.ndarray,
@@ -377,9 +380,9 @@ def _backtest_with_risk(
     max_bars_in_trade: int,
 ) -> Tuple[
     np.ndarray,  # equity
-    float,       # cash final
-    float,       # posición final
-    int,         # número de trades
+    float,  # cash final
+    float,  # posición final
+    int,  # número de trades
     np.ndarray,  # trade_entry_idx
     np.ndarray,  # trade_exit_idx
     np.ndarray,  # trade_entry_price
@@ -404,9 +407,7 @@ def _backtest_with_risk(
       4 -> Señal contraria
     """
     n = c.shape[0]
-    equity = np.empty(n, dtype=np.float64)
-    if start_index > 0:
-        equity[:start_index] = np.nan
+    equity = np.full(n, np.nan, dtype=np.float64)
 
     cash = initial_cash
     position = 0.0
@@ -565,6 +566,7 @@ def _backtest_with_risk(
 # Interfaz de alto nivel (Python)
 # =====================
 
+
 def run_backtest_basic(
     data: OHLCVArrays,
     config: BacktestConfig | None = None,
@@ -662,9 +664,12 @@ def run_backtest_basic(
         trade_log=trade_log,
         extra=extra,
     )
+
+
 # =====================
 # Motor de backtest usando SEÑALES externas (Numba)
 # =====================
+
 
 @njit
 def _backtest_with_risk_from_signals(
@@ -702,9 +707,9 @@ def _backtest_with_risk_from_signals(
     initial_use_atr_stop: bool = False,
 ) -> Tuple[
     np.ndarray,  # equity
-    float,       # cash final
-    float,       # posición final
-    int,         # número de trades
+    float,  # cash final
+    float,  # posición final
+    int,  # número de trades
     np.ndarray,  # trade_entry_idx
     np.ndarray,  # trade_exit_idx
     np.ndarray,  # trade_entry_price
@@ -909,7 +914,9 @@ def _backtest_with_risk_from_signals(
                 )
                 if risk_qty > 0:
                     desired_qty = float(risk_qty)
-            elif risk_per_trade_pct > 0.0 and has_atr and atr_stop_mult > 0.0 and desired_qty <= 0.0:
+            elif (
+                risk_per_trade_pct > 0.0 and has_atr and atr_stop_mult > 0.0 and desired_qty <= 0.0
+            ):
                 current_equity = cash + position * price
                 risk_qty = _compute_risk_based_qty(
                     equity=current_equity,
@@ -955,7 +962,7 @@ def _backtest_with_risk_from_signals(
                     tp_price = trade_price * (1.0 + tp_pct) if tp_pct > 0.0 else 0.0
                     use_atr_stops = False
 
-        # 3) Mark-to-market de la equity
+                # 3) Mark-to-market de la equity
                 equity[i] = cash + position * price
 
         state_cash[i] = cash
@@ -993,6 +1000,7 @@ def _backtest_with_risk_from_signals(
 # Interfaz de alto nivel usando señales externas
 # =====================
 
+
 def run_backtest_with_signals(
     data: OHLCVArrays,
     signals: np.ndarray,
@@ -1015,39 +1023,45 @@ def run_backtest_with_signals(
     if config is None:
         config = BacktestConfig()
 
-    if signals.shape[0] != data.c.shape[0]:
+    bars = data.c.shape[0]
+
+    if signals.shape[0] != bars:
         raise ValueError(
-            f"El tamaño de signals ({signals.shape[0]}) no coincide con el número de barras ({data.c.shape[0]})."
+            "El tamaño de signals "
+            f"({signals.shape[0]}) no coincide con el número de barras ({bars})."
         )
 
     if position_sizes is None:
         position_sizes = np.full_like(data.c, np.nan, dtype=float)
-    elif position_sizes.shape[0] != data.c.shape[0]:
+    elif position_sizes.shape[0] != bars:
         raise ValueError(
-            f"El tamaño de position_sizes ({position_sizes.shape[0]}) no coincide con el número de barras ({data.c.shape[0]})."
+            "El tamaño de position_sizes "
+            f"({position_sizes.shape[0]}) no coincide con el número de barras ({bars})."
         )
     position_sizes = np.asarray(position_sizes, dtype=np.float64)
 
     if atr is None:
         atr = np.full_like(data.c, np.nan, dtype=float)
-    elif atr.shape[0] != data.c.shape[0]:
+    elif atr.shape[0] != bars:
         raise ValueError(
-            f"El tamaño de atr ({atr.shape[0]}) no coincide con el número de barras ({data.c.shape[0]})."
+            "El tamaño de atr " f"({atr.shape[0]}) no coincide con el número de barras ({bars})."
         )
 
     if stop_losses is None:
         stop_losses = np.full_like(data.c, np.nan, dtype=float)
-    elif stop_losses.shape[0] != data.c.shape[0]:
+    elif stop_losses.shape[0] != bars:
         raise ValueError(
-            f"El tamaño de stop_losses ({stop_losses.shape[0]}) no coincide con el número de barras ({data.c.shape[0]})."
+            "El tamaño de stop_losses "
+            f"({stop_losses.shape[0]}) no coincide con el número de barras ({bars})."
         )
     stop_losses = np.asarray(stop_losses, dtype=np.float64)
 
     if take_profits is None:
         take_profits = np.full_like(data.c, np.nan, dtype=float)
-    elif take_profits.shape[0] != data.c.shape[0]:
+    elif take_profits.shape[0] != bars:
         raise ValueError(
-            f"El tamaño de take_profits ({take_profits.shape[0]}) no coincide con el número de barras ({data.c.shape[0]})."
+            "El tamaño de take_profits "
+            f"({take_profits.shape[0]}) no coincide con el número de barras ({bars})."
         )
     take_profits = np.asarray(take_profits, dtype=np.float64)
 
