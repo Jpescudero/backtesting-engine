@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Iterable, Iterator
+from typing import Any, Iterable, Iterator, Sequence
 
 from src.backtesting.core.models import MarketDataBatch
 
@@ -25,7 +25,7 @@ class Timeline:
             yield self.data.slice_from(start)
 
 
-def ensure_sequential_orders(order_batches: Iterable[list]) -> bool:
+def ensure_sequential_orders(order_batches: Iterable[Sequence[Any]]) -> bool:
     """Helper used in tests to ensure strategies emit ordered batches."""
 
     last_index = -1
