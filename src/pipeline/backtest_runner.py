@@ -1,7 +1,8 @@
 from __future__ import annotations
 
+import json
 import logging
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Dict, Mapping, Optional
 
@@ -11,7 +12,7 @@ import numpy as np
 from src.analytics.reporting import equity_to_series, trades_to_dataframe
 from src.config.paths import REPORTS_DIR
 from src.data.feeds import NPZOHLCVFeed, OHLCVArrays
-from src.engine.core import BacktestConfig, run_backtest_with_signals
+from src.engine.core import BacktestConfig, BacktestSnapshot, run_backtest_with_signals
 from src.pipeline.data_pipeline import prepare_npz_dataset
 from src.pipeline.reporting import (
     BacktestReports,
@@ -22,10 +23,64 @@ from src.pipeline.reporting import (
 )
 from src.strategies.microstructure_reversal import StrategyMicrostructureReversal
 from src.strategies.microstructure_sweep import SweepParams, StrategyMicrostructureSweep
+from src.utils.seeding import seed_everything
 from src.utils.timing import timed_step
 
 
 logger = logging.getLogger(__name__)
+
+
+def _load_snapshot(path: Path | str) -> BacktestSnapshot:
+    snapshot_path = Path(path)
+    if not snapshot_path.exists():
+        raise FileNotFoundError(f"Snapshot no encontrado en {snapshot_path}")
+
+    with open(snapshot_path, "r", encoding="utf-8") as f:
+        payload = json.load(f)
+
+    if isinstance(payload, list):
+        if not payload:
+            raise ValueError(f"El snapshot {snapshot_path} está vacío")
+        payload = payload[-1]
+
+    return BacktestSnapshot.from_dict(payload)
+
+
+def _save_snapshots(path: Path, snapshots) -> None:
+    if not snapshots:
+        return
+
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump([s.to_dict() for s in snapshots], f, ensure_ascii=False, indent=2)
+
+
+def _build_run_metadata(
+    *, config: BacktestRunConfig, seeds: Mapping[str, object], snapshot_path: Path | None
+) -> Dict[str, object]:
+    return {
+        "symbol": config.symbol,
+        "timeframe": config.timeframe,
+        "strategy_name": config.strategy_name,
+        "strategy_params": asdict(config.strategy_params),
+        "backtest_config": asdict(config.backtest_config),
+        "train_years": config.train_years,
+        "test_years": config.test_years,
+        "use_test_years": config.use_test_years,
+        "seed": config.seed,
+        "seeds": dict(seeds),
+        "snapshot_interval": config.snapshot_interval,
+        "snapshot_path": str(snapshot_path) if snapshot_path else None,
+        "resume_snapshot": str(config.resume_snapshot) if config.resume_snapshot else None,
+    }
+
+
+def _save_run_metadata(path: Path, meta: Mapping[str, object]) -> None:
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(meta, f, ensure_ascii=False, indent=2)
 
 
 def _effective_strategy_name(config_name: str, meta: Optional[Mapping[str, object]]) -> str:
@@ -66,6 +121,12 @@ class BacktestRunConfig:
     train_years: Optional[list[int]] = None
     test_years: Optional[list[int]] = None
     use_test_years: bool = False
+    seed: Optional[int] = None
+    snapshot_interval: Optional[int] = None
+    snapshot_path: Optional[Path] = None
+    resume_snapshot: Optional[Path] = None
+    run_metadata_path: Optional[Path] = None
+    replay_metadata: Optional[Path] = None
     strategy_params: object = field(default_factory=StrategyParams)
     backtest_config: BacktestConfig = field(
         default_factory=lambda: BacktestConfig(
@@ -104,6 +165,12 @@ def _configure_matplotlib(headless: bool) -> None:
 
 def run_single_backtest(config: BacktestRunConfig) -> BacktestArtifacts:
     _configure_matplotlib(config.headless)
+
+    seeds = seed_everything(config.seed)
+
+    resume_snapshot: BacktestSnapshot | None = None
+    if config.resume_snapshot:
+        resume_snapshot = _load_snapshot(config.resume_snapshot)
 
     if config.strategy_name not in {"microstructure_reversal", "microstructure_sweep"}:
         raise ValueError(
@@ -232,6 +299,8 @@ def run_single_backtest(config: BacktestRunConfig) -> BacktestArtifacts:
             stop_losses=stop_losses,
             take_profits=take_profits,
             config=config.backtest_config,
+            snapshot_interval=config.snapshot_interval,
+            resume_from=resume_snapshot,
         )
     logger.info(
         "Cash final: %s | Posición final: %s | Número de trades: %s",
@@ -250,6 +319,19 @@ def run_single_backtest(config: BacktestRunConfig) -> BacktestArtifacts:
         )
 
     report_paths = BacktestReports(equity_stats=equity_stats, trade_stats=trade_stats)
+
+    snapshot_path: Optional[Path] = None
+    if result.snapshots:
+        snapshot_path = config.snapshot_path or (reports_dir / "snapshots.json")
+        _save_snapshots(snapshot_path, result.snapshots)
+
+    run_meta = _build_run_metadata(
+        config=config,
+        seeds=seeds,
+        snapshot_path=snapshot_path,
+    )
+    meta_path = config.run_metadata_path or (reports_dir / "run_metadata.json")
+    _save_run_metadata(meta_path, run_meta)
     if config.generate_report_files:
         with timed_step(timings, "07_reportes_excel_json"):
             excel_path, json_path = generate_report_files(
@@ -260,7 +342,10 @@ def run_single_backtest(config: BacktestRunConfig) -> BacktestArtifacts:
                 trades_df=trades_df,
                 equity_stats=equity_stats,
                 trade_stats=trade_stats,
-                meta=getattr(strat_res, "meta", {}),
+                meta={
+                    **getattr(strat_res, "meta", {}),
+                    "run_metadata": run_meta,
+                },
             )
         report_paths.excel_path = excel_path
         report_paths.json_path = json_path
@@ -301,4 +386,34 @@ def run_single_backtest(config: BacktestRunConfig) -> BacktestArtifacts:
         trade_stats=trade_stats,
         timings=timings,
         reports=report_paths,
+    )
+
+
+def load_run_config_from_metadata(path: Path | str) -> BacktestRunConfig:
+    meta_path = Path(path)
+    with open(meta_path, "r", encoding="utf-8") as f:
+        meta = json.load(f)
+
+    strategy_name = meta.get("strategy_name", "microstructure_reversal")
+    strat_params_dict = meta.get("strategy_params", {}) or {}
+    if strategy_name == "microstructure_sweep":
+        strategy_params = SweepParams(**strat_params_dict)
+    else:
+        strategy_params = StrategyParams(**strat_params_dict)
+
+    backtest_cfg = BacktestConfig(**(meta.get("backtest_config", {}) or {}))
+
+    return BacktestRunConfig(
+        symbol=meta.get("symbol", "NDXm"),
+        timeframe=meta.get("timeframe", "1m"),
+        strategy_name=strategy_name,
+        train_years=meta.get("train_years"),
+        test_years=meta.get("test_years"),
+        use_test_years=bool(meta.get("use_test_years", False)),
+        seed=meta.get("seed"),
+        snapshot_interval=meta.get("snapshot_interval"),
+        snapshot_path=Path(meta["snapshot_path"]) if meta.get("snapshot_path") else None,
+        resume_snapshot=Path(meta["resume_snapshot"]) if meta.get("resume_snapshot") else None,
+        strategy_params=strategy_params,
+        backtest_config=backtest_cfg,
     )
