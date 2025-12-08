@@ -29,8 +29,6 @@ run_settings.example.txt
 CÓDIGO FUENTE
 -------------
 src\
-  __init__.py  (opcional)
-
   config\
     # Configuración general del proyecto
 
@@ -40,6 +38,9 @@ src\
 
   pipeline\
     # Helpers de orquestación (preparación de datos, backtests y reporting)
+
+    __init__.py
+      # Facilita importaciones del paquete de pipeline
 
     data_pipeline.py
       # Asegura que existan los artefactos ticks → CSV → NPZ
@@ -55,8 +56,6 @@ src\
 
   data\
     # Todo lo relacionado con carga y transformación de datos
-
-    __init__.py  (opcional)
 
     data_utils.py
       # helpers: iter_ticks_by_year, make_ohlcv, list_tick_files...
@@ -82,14 +81,8 @@ src\
       # NPZOHLCVFeed (carga NPZ -> OHLCVArrays para Numba)
       GitHub: https://github.com/Jpescudero/backtesting-engine/blob/main/src/data/feeds.py
 
-    organize_darwinex_files.py
-      # (pendiente) organiza logs Darwinex mezclados en subcarpetas BID/ASK
-      GitHub (planificado): https://github.com/Jpescudero/backtesting-engine/blob/main/src/data/organize_darwinex_files.py
-
   engine\
     # Motor de backtesting (Numba, señales, SL/TP, etc.)
-
-    __init__.py  (opcional)
 
     core.py
       # BacktestConfig, BacktestResult, motor numba, run_backtest_with_signals
@@ -97,8 +90,6 @@ src\
 
   analytics\
     # Métricas, reporting y plots
-
-    __init__.py  (opcional)
 
     metrics.py
       # equity_curve_metrics, trades_metrics (estilo Darwinex)
@@ -140,12 +131,24 @@ src\
   utils\
     # Utilidades compartidas
 
+    __init__.py
+      # Marca el paquete utils para imports relativos
+
     timing.py
       # Context manager para medir tiempos y loggear duración
       GitHub: https://github.com/Jpescudero/backtesting-engine/blob/main/src/utils/timing.py
 
+    risk.py
+      # Cálculo de tamaño dinámico de posición según SL/TP y riesgo permitido
+      GitHub: https://github.com/Jpescudero/backtesting-engine/blob/main/src/utils/risk.py
+
   visualization\
     # En el futuro: dashboards, informes más complejos, etc.
+
+    visualizacion.py
+      # Boceto inicial para renderizados/plots desde notebooks
+      GitHub: https://github.com/Jpescudero/backtesting-engine/blob/main/src/visualization/visualizacion.py
+
     # GitHub (carpeta): https://github.com/Jpescudero/backtesting-engine/tree/main/src/visualization
 
 
