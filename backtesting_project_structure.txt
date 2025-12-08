@@ -218,6 +218,20 @@ data\
       # generado por bars1m_to_excel.generate_1m_bars_csv()
 
 
+RESEARCH
+--------
+research\
+  ml\
+    build_ml_dataset_ndxm.py
+      # Script CLI para generar dataset ML (features + label) desde barras 1m NDXm.
+    train_directional_model_ndxm.py
+      # Entrena un modelo base (Gradient Boosting) con split temporal y guarda modelo + métricas.
+  microstructure\
+    study_opening_sweeps.py
+      # Estudio estadístico de barridas de apertura (ventanas 08:55-10:00 y 14:55-16:00),
+      # exporta métricas, trades y gráficos a reports/research/microstructure/.
+
+
 NOTEBOOKS / REPORTS
 -------------------
 notebooks\

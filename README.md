@@ -47,6 +47,9 @@ The framework aims to be a **research-ready, production-oriented foundation** fo
 | `data/npz/`                            | Numba-ready NPZ files |
 | `notebooks/`                           | Research notebooks |
 | `reports/`                             | Generated reports and plots |
+| `research/ml/build_ml_dataset_ndxm.py` | Build ML dataset (features + labels) from NDXm 1m bars |
+| `research/ml/train_directional_model_ndxm.py` | Train baseline directional Gradient Boosting model |
+| `research/microstructure/study_opening_sweeps.py` | Opening sweep stats study (metrics + plots) |
 
 ### 1.1.1 Script-by-script quick reference
 
@@ -82,6 +85,9 @@ This table expands on the individual scripts and modules so you can quickly unde
 | `src/visualization/visualizacion.py` | Early-stage notebook-friendly plotting ideas for future dashboards. |
 | `notebooks/` | Research notebooks for experiments. |
 | `reports/` | Output folder for generated reports, plots, and exports. |
+| `research/ml/build_ml_dataset_ndxm.py` | CLI script to build ML features/labels from NDXm 1m bars and store parquet datasets under `data/ml/`. |
+| `research/ml/train_directional_model_ndxm.py` | Trains a baseline Gradient Boosting classifier on the ML dataset and saves model/scaler artifacts plus metrics. |
+| `research/microstructure/study_opening_sweeps.py` | Opening sweep statistical study (session-filtered signals, forward returns, CSV exports, and plots under `reports/research/microstructure/`). |
 
 ### 1.2 Codeblock
 
@@ -116,6 +122,7 @@ This table expands on the individual scripts and modules so you can quickly unde
   - `npz/` — Numba-ready arrays
 - **notebooks/** — Research & experiments
 - **reports/** — Generated reports
+- **research/** — ML datasets/models and microstructure studies (`ml/`, `microstructure/`)
 
 ### 1.3 Guía de enlaces en GitHub
 

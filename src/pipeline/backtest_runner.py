@@ -268,9 +268,8 @@ def run_single_backtest(config: BacktestRunConfig) -> BacktestArtifacts:
     with timed_step(timings, "02_carga_feed_npz"):
         feed = NPZOHLCVFeed(symbol=config.symbol, timeframe=config.timeframe)
 
-        use_test_years = config.use_test_years or (
-            config.test_years is not None and not config.train_years
-        )
+        test_years: Sequence[int] | None = config.test_years
+        train_years: Sequence[int] | None = config.train_years
 
         if use_test_years:
             data = feed.load_years(_validated_years(config.test_years, label="test_years"))
