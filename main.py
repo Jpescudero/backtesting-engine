@@ -25,8 +25,14 @@ from src.pipeline.backtest_runner import (
 
 def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Ejecuta un backtest Microstructure Reversal")
-    parser.add_argument("--symbol", default="NDXm", help="Símbolo a backtestear")
+    parser.add_argument("--symbol", default="NDXm", help="Símbolo o índice a backtestear")
     parser.add_argument("--timeframe", default="1m", help="Timeframe del feed NPZ")
+    parser.add_argument(
+        "--strategy",
+        default="microstructure_reversal",
+        choices=["microstructure_reversal"],
+        help="Estrategia a ejecutar",
+    )
     parser.add_argument("--ema-short", type=int, default=20, help="EMA corta para filtro de tendencia")
     parser.add_argument("--ema-long", type=int, default=50, help="EMA larga para filtro de tendencia")
     parser.add_argument("--atr-period", type=int, default=20, help="Periodo ATR para normalizar rangos")
@@ -134,7 +140,7 @@ def _print_run_context(run_config: BacktestRunConfig) -> None:
         ("Umbral entrada", _format_number(cfg.entry_threshold)),
         (
             "Estrategia",
-            "microstructure_reversal",
+            run_config.strategy_name,
         ),
         (
             "Params estrategia",
@@ -263,6 +269,10 @@ def main(argv: Iterable[str] | None = None) -> None:
 
     config_file_values = _load_config_file(_resolve_config_file(args.config_file))
 
+    symbol = _get_setting(args.symbol, config_file_values, "symbol", "NDXm")
+    timeframe = _get_setting(args.timeframe, config_file_values, "timeframe", "1m")
+    strategy_name = _get_setting(args.strategy, config_file_values, "strategy", "microstructure_reversal")
+
     initial_cash = _get_setting(args.initial_cash, config_file_values, "initial_cash", 100_000.0, float)
     train_years = _get_setting(_parse_years(args.train_years), config_file_values, "train_years", None, _parse_years)
     test_years = _get_setting(_parse_years(args.test_years), config_file_values, "test_years", None, _parse_years)
@@ -296,8 +306,9 @@ def main(argv: Iterable[str] | None = None) -> None:
     )
 
     run_config = BacktestRunConfig(
-        symbol=args.symbol,
-        timeframe=args.timeframe,
+        symbol=symbol,
+        timeframe=timeframe,
+        strategy_name=strategy_name,
         generate_report_files=not args.no_report_files,
         generate_main_plots=not args.no_main_plots,
         generate_trade_plots=not args.no_trade_plots,
