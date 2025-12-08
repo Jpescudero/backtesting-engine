@@ -17,11 +17,7 @@ from pathlib import Path
 import pandas as pd
 
 from src.config.paths import REPORTS_DIR
-from src.pipeline.backtest_runner import (
-    BacktestArtifacts,
-    BacktestRunConfig,
-    run_single_backtest,
-)
+from src.pipeline.backtest_runner import BacktestArtifacts, BacktestRunConfig, run_single_backtest
 
 logger = logging.getLogger(__name__)
 

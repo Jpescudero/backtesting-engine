@@ -2,11 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from src.config.paths import (
-    NPZ_DIR,
-    PARQUET_TICKS_DIR,
-    ensure_directories_exist,
-)
+from src.config.paths import NPZ_DIR, PARQUET_TICKS_DIR, ensure_directories_exist
 from src.data.bars1m_to_excel import generate_1m_bars_csv, get_default_output_csv
 from src.data.csv_1m_to_npz import csv_1m_to_npz
 from src.data.data_to_parquet import DEFAULT_SYMBOL, data_to_parquet
