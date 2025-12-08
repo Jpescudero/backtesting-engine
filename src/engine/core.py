@@ -740,6 +740,13 @@ def _backtest_with_risk_from_signals(
     n = c.shape[0]
     equity = np.empty(n, dtype=np.float64)
 
+    # Si reanudamos desde un snapshot, dejamos los valores previos como NaN para
+    # evitar que queden restos de memoria (cero u otros valores) en la curva de
+    # equity. Así la serie resultante refleja únicamente la parte efectiva del
+    # backtest.
+    if start_index > 0:
+        equity[:start_index] = np.nan
+
     cash = initial_cash if start_index == 0 else initial_cash_state
     position = 0.0 if start_index == 0 else initial_position_state
     entry_price = 0.0 if start_index == 0 else initial_entry_price
