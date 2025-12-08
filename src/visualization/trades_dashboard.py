@@ -73,16 +73,36 @@ def build_trades_dashboard(
 
     if volatility_col:
         if volatility_col not in trades.columns:
-            raise ValueError(f"La columna de volatilidad '{volatility_col}' no está en el DataFrame")
+            raise ValueError(
+                f"La columna de volatilidad '{volatility_col}' no está en el DataFrame"
+            )
         trades[volatility_col] = pd.to_numeric(trades[volatility_col])
 
     trade_records = _prepare_records(trades, volatility_col)
 
-    exit_reasons = sorted({rec.get("exit_reason", "") for rec in trade_records if rec.get("exit_reason")})
+    exit_reasons = sorted(
+        {rec.get("exit_reason", "") for rec in trade_records if rec.get("exit_reason")}
+    )
     volatility_min = float(trades[volatility_col].min()) if volatility_col else None
     volatility_max = float(trades[volatility_col].max()) if volatility_col else None
 
-    dashboard_html = f"""
+    exit_options_html = "".join(
+        f"<option value='{reason}'>{reason}</option>" for reason in exit_reasons
+    )
+    vol_min_input = (
+        f"<div><label for='vol-min'>{volatility_col} (mín)</label>"
+        f"<input type='number' step='any' id='vol-min' placeholder='{volatility_min:.3f}'></div>"
+        if volatility_col
+        else ""
+    )
+    vol_max_input = (
+        f"<div><label for='vol-max'>{volatility_col} (máx)</label>"
+        f"<input type='number' step='any' id='vol-max' placeholder='{volatility_max:.3f}'></div>"
+        if volatility_col
+        else ""
+    )
+
+    dashboard_template = """
 <!DOCTYPE html>
 <html lang="es">
 <head>
@@ -91,22 +111,68 @@ def build_trades_dashboard(
   <title>Trades dashboard</title>
   <script src="https://cdn.plot.ly/plotly-2.27.0.min.js"></script>
   <style>
-    body {{ font-family: 'Inter', system-ui, -apple-system, sans-serif; margin: 0; background: #f6f8fb; }}
-    header {{ background: #0f172a; color: white; padding: 20px 28px; box-shadow: 0 1px 8px rgba(0,0,0,0.15); }}
+    body {{
+      font-family: 'Inter', system-ui, -apple-system, sans-serif;
+      margin: 0;
+      background: #f6f8fb;
+    }}
+    header {{
+      background: #0f172a;
+      color: white;
+      padding: 20px 28px;
+      box-shadow: 0 1px 8px rgba(0,0,0,0.15);
+    }}
     h1 {{ margin: 0 0 4px 0; font-size: 24px; }}
     .container {{ padding: 24px 28px 32px; max-width: 1400px; margin: auto; }}
-    .panel {{ background: white; border-radius: 12px; padding: 16px 18px; box-shadow: 0 8px 20px rgba(15,23,42,0.08); margin-bottom: 18px; }}
-    .filters {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; align-items: end; }}
-    label {{ font-size: 13px; color: #334155; font-weight: 600; display: block; margin-bottom: 4px; }}
-    input, select {{ width: 100%; padding: 8px 10px; border: 1px solid #e2e8f0; border-radius: 8px; font-size: 14px; }}
-    .checkbox-group {{ display: flex; gap: 12px; align-items: center; }}
-    .kpi-grid {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; }}
-    .kpi {{ background: linear-gradient(135deg, #0ea5e9, #2563eb); color: white; padding: 14px; border-radius: 12px; box-shadow: inset 0 1px 0 rgba(255,255,255,0.25); }}
+    .panel {{
+      background: white;
+      border-radius: 12px;
+      padding: 16px 18px;
+      box-shadow: 0 8px 20px rgba(15,23,42,0.08);
+      margin-bottom: 18px;
+    }}
+    .filters {{
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 12px;
+      align-items: end;
+    }}
+    label {{
+      font-size: 13px;
+      color: #334155;
+      font-weight: 600;
+      display: block;
+      margin-bottom: 4px;
+    }}
+    input, select {{
+      width: 100%;
+      padding: 8px 10px;
+      border: 1px solid #e2e8f0;
+      border-radius: 8px;
+      font-size: 14px;
+    }}
+      .checkbox-group {{ display: flex; gap: 12px; align-items: center; }}
+      .kpi-grid {{
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+        gap: 12px;
+      }}
+    .kpi {{
+      background: linear-gradient(135deg, #0ea5e9, #2563eb);
+      color: white;
+      padding: 14px;
+      border-radius: 12px;
+      box-shadow: inset 0 1px 0 rgba(255,255,255,0.25);
+    }}
     .kpi small {{ display: block; opacity: 0.85; }}
     .kpi strong {{ font-size: 22px; }}
-    .chart {{ width: 100%; height: 420px; }}
-    .table {{ width: 100%; border-collapse: collapse; margin-top: 8px; font-size: 13px; }}
-    .table th, .table td {{ border: 1px solid #e2e8f0; padding: 6px 8px; text-align: left; }}
+      .chart {{ width: 100%; height: 420px; }}
+      .table {{ width: 100%; border-collapse: collapse; margin-top: 8px; font-size: 13px; }}
+      .table th, .table td {{
+        border: 1px solid #e2e8f0;
+        padding: 6px 8px;
+        text-align: left;
+      }}
     .table th {{ background: #f8fafc; color: #475569; }}
   </style>
 </head>
@@ -134,11 +200,11 @@ def build_trades_dashboard(
           <label for="reason">Motivo de salida</label>
           <select id="reason">
             <option value="">Todos</option>
-            {''.join(f"<option value='{reason}'>{reason}</option>" for reason in exit_reasons)}
+            __EXIT_OPTIONS__
           </select>
         </div>
-        {f"<div><label for='vol-min'>{volatility_col} (mín)</label><input type='number' step='any' id='vol-min' placeholder='{volatility_min:.3f}'></div>" if volatility_col else ""}
-        {f"<div><label for='vol-max'>{volatility_col} (máx)</label><input type='number' step='any' id='vol-max' placeholder='{volatility_max:.3f}'></div>" if volatility_col else ""}
+        __VOL_MIN__
+        __VOL_MAX__
       </div>
     </div>
 
@@ -155,8 +221,8 @@ def build_trades_dashboard(
   </div>
 
   <script>
-    const trades = {json.dumps(trade_records)};
-    const volatilityField = {json.dumps(volatility_col)};
+    const trades = __TRADES__;
+    const volatilityField = __VOL_FIELD__;
 
     function parseDate(value) {{
       return value ? new Date(value) : null;
@@ -190,7 +256,7 @@ def build_trades_dashboard(
           if (volMaxEl && volMaxEl.value && vol > volMax) return false;
         }}
         return true;
-      });
+      }});
     }
 
     function renderKPIs(filtered) {{
@@ -200,13 +266,16 @@ def build_trades_dashboard(
       const avgHold = filtered.reduce((acc, t) => acc + (t.holding_bars ?? 0), 0) / (total || 1);
       const winRate = total ? (wins / total) * 100 : 0;
 
-      document.getElementById('kpis').innerHTML = `
-        <div class="kpi"><small>Total trades</small><strong>${total}</strong></div>
-        <div class="kpi"><small>Win rate</small><strong>${winRate.toFixed(1)}%</strong></div>
-        <div class="kpi"><small>PnL total</small><strong>${pnl.toFixed(2)}</strong></div>
-        <div class="kpi"><small>Holding medio (barras)</small><strong>${avgHold.toFixed(1)}</strong></div>
-      `;
-    }
+        document.getElementById('kpis').innerHTML = `
+          <div class="kpi"><small>Total trades</small><strong>${{total}}</strong></div>
+          <div class="kpi"><small>Win rate</small><strong>${{winRate.toFixed(1)}}%</strong></div>
+          <div class="kpi"><small>PnL total</small><strong>${{pnl.toFixed(2)}}</strong></div>
+          <div class="kpi">
+            <small>Holding medio (barras)</small>
+            <strong>${{avgHold.toFixed(1)}}</strong>
+          </div>
+        `;
+      }
 
     function renderCharts(filtered) {{
       const sorted = [...filtered].sort((a, b) => new Date(a.exit_time) - new Date(b.exit_time));
@@ -236,7 +305,7 @@ def build_trades_dashboard(
           size: sorted.map(t => Math.max(6, Math.min(18, Math.abs(t.pnl) / 50))),
           opacity: 0.85,
         }},
-        text: sorted.map(t => `PnL: ${t.pnl.toFixed(2)} | ${t.direction}`),
+        text: sorted.map(t => `PnL: ${{t.pnl.toFixed(2)}} | ${{t.direction}}`),
         hovertemplate: '<b>%{text}</b><br>Salida: %{x}<extra></extra>',
         name: 'Trades'
       }}], {{
@@ -248,14 +317,22 @@ def build_trades_dashboard(
     }
 
     function renderTable(filtered) {{
-      const head = `<tr><th>Salida</th><th>PnL</th><th>Sentido</th><th>Qty</th><th>Motivo</th></tr>`;
+      const head = `
+        <tr>
+          <th>Salida</th>
+          <th>PnL</th>
+          <th>Sentido</th>
+          <th>Qty</th>
+          <th>Motivo</th>
+        </tr>
+      `;
       const rows = filtered.slice(-25).reverse().map(trade => `
         <tr>
-          <td>${trade.exit_time}</td>
-          <td style="color:${trade.is_win ? '#10b981' : '#ef4444'}">${trade.pnl.toFixed(2)}</td>
-          <td>${trade.direction}</td>
-          <td>${trade.qty.toFixed(2)}</td>
-          <td>${trade.exit_reason || ''}</td>
+          <td>${{trade.exit_time}}</td>
+          <td style="color:${{trade.is_win ? '#10b981' : '#ef4444'}}">${{trade.pnl.toFixed(2)}}</td>
+          <td>${{trade.direction}}</td>
+          <td>${{trade.qty.toFixed(2)}}</td>
+          <td>${{trade.exit_reason || ''}}</td>
         </tr>
       `).join('');
       document.getElementById('table').innerHTML = head + rows;
@@ -274,6 +351,15 @@ def build_trades_dashboard(
 </body>
 </html>
 """
+
+    dashboard_html = (
+        dashboard_template.replace("__EXIT_OPTIONS__", exit_options_html)
+        .replace("__VOL_MIN__", vol_min_input)
+        .replace("__VOL_MAX__", vol_max_input)
+        .replace("__TRADES__", json.dumps(trade_records))
+        .replace("__VOL_FIELD__", json.dumps(volatility_col))
+    )
+    dashboard_html = dashboard_html.replace("{{", "{").replace("}}", "}")
 
     output_path = Path(output_path)
     output_path.parent.mkdir(parents=True, exist_ok=True)
