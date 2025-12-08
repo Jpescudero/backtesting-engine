@@ -48,6 +48,41 @@ The framework aims to be a **research-ready, production-oriented foundation** fo
 | `notebooks/`                           | Research notebooks |
 | `reports/`                             | Generated reports and plots |
 
+### 1.1.1 Script-by-script quick reference
+
+This table expands on the individual scripts and modules so you can quickly understand what each one does when wiring the pipeline together or reusing parts in notebooks:
+
+| Path / script | Purpose |
+| --- | --- |
+| `main.py` | CLI entry point that orchestrates the full pipeline (data prep → strategy signals → backtest → reports). Generates Excel/JSON summaries plus trade/equity PNGs, supports Microstructure Reversal (default) or Microstructure Sweep, and lets you pick train/test years, risk params, and advanced ATR/vol filters via flags. |
+| `run_settings.example.txt` | Key-value configuration template for `main.py`. Copy it, fill in `initial_cash`, `train_years`, `test_years`, `use_test_years`, `strategy`, and optional sweep/reversal parameters, then pass it through `--config-file`. |
+| `src/config/paths.py` | Centralized “GPS” for directories (project root, data, reports, etc.). |
+| `src/pipeline/__init__.py` | Convenience imports for the pipeline package. |
+| `src/pipeline/data_pipeline.py` | Ensures downstream artifacts exist by chaining ticks → CSV → NPZ generation. Ideal when you want a single call to prepare datasets before backtests. |
+| `src/pipeline/backtest_runner.py` | High-level runner that combines strategy generation, Numba engine execution, and reporting in one call. |
+| `src/pipeline/reporting.py` | Helpers to export metrics, plots, and final files (Excel/JSON + charts) in a backtest-friendly bundle. |
+| `src/data/data_utils.py` | Utility layer for file discovery and OHLCV helpers such as `iter_ticks_by_year`, `make_ohlcv`, and `list_tick_files`. |
+| `src/data/data_to_parquet.py` | Converts Darwinex BID/ASK logs into cleaned hourly parquet shards per symbol/year. |
+| `src/data/bars1m_to_excel.py` | Aggregates parquet ticks into a consolidated 1-minute OHLCV CSV covering all years. |
+| `src/data/csv_1m_to_npz.py` | Turns the 1-minute CSV into compact NPZ arrays (`timestamps, open, high, low, close, volume`). |
+| `src/data/parquet_to_npz.py` | Generic parquet-to-NPZ converter with `bars_df_to_npz_arrays` for alternate bar sources. |
+| `src/data/feeds.py` | `NPZOHLCVFeed` loader that returns Numba-friendly OHLCV arrays and can slice by year (`load_years`) or load all data. |
+| `src/engine/core.py` | Numba-powered backtesting engine with `BacktestConfig`, `BacktestResult`, and `run_backtest_with_signals` for applying SL/TP, max duration, and execution costs. |
+| `src/analytics/metrics.py` | Computes equity/trade metrics (returns, drawdown, expectancy, win rate, etc.) in a Darwinex-like style. |
+| `src/analytics/reporting.py` | Converts raw engine outputs into pandas structures via `equity_to_series` and `trades_to_dataframe`. |
+| `src/analytics/plots.py` | Plotting helpers for equity curves, monthly trades, and related visuals. |
+| `src/analytics/backtest_output.py` | Exports lightweight Excel/JSON summaries while keeping file sizes manageable. |
+| `src/analytics/trade_plots.py` | Renders best/worst trade charts over 1m bars with annotated entries/exits. |
+| `src/strategies/base.py` | Base classes and shared types for strategy modules. |
+| `src/strategies/barrida_apertura.py` | Opening “sweep” strategy around 09:00/15:00 Europe/Madrid sessions. |
+| `src/strategies/microstructure_reversal.py` | Microstructure Reversal strategy (pullback + structure break + bullish shift candle) with EMA/ATR context filters. |
+| `src/strategies/microstructure_sweep.py` | Microstructure Sweep strategy (sweep + absorption) with ATR/volume filters, intraday windows, and trade caps. |
+| `src/utils/timing.py` | Context manager to time blocks and log duration. |
+| `src/utils/risk.py` | Dynamic position sizing given SL/TP and risk allowance. |
+| `src/visualization/visualizacion.py` | Early-stage notebook-friendly plotting ideas for future dashboards. |
+| `notebooks/` | Research notebooks for experiments. |
+| `reports/` | Output folder for generated reports, plots, and exports. |
+
 ### 1.2 Codeblock
 
 - **main.py** — Main entry point of the entire workflow
@@ -81,6 +116,30 @@ The framework aims to be a **research-ready, production-oriented foundation** fo
   - `npz/` — Numba-ready arrays
 - **notebooks/** — Research & experiments
 - **reports/** — Generated reports
+
+### 1.3 Project layout reference from `backtesting_project_structure.txt`
+
+For a quick orientation, this mirrors the annotated structure documented in `backtesting_project_structure.txt` (useful when browsing the repo or mapping local folders):
+
+- **Executable & configs**
+  - `main.py` — entry point for running Microstructure Reversal/Sweep backtests, generating Excel/JSON summaries and trade PNGs, and selecting train/test years and capital.
+  - `run_settings.example.txt` — template of `key=value` settings for `main.py` (capital, train/test years, strategy selection, sweep parameters, etc.). Copy it and provide via `--config-file`.
+- **Source tree (`src/`)**
+  - `config/paths.py` — defines project/data/report directories.
+  - `pipeline/` — orchestration helpers: `data_pipeline.py` (ensure ticks → CSV → NPZ), `backtest_runner.py` (strategy + engine + reporting), `reporting.py` (export metrics/plots/files), and `__init__.py` for package imports.
+  - `data/` — ingestion and transformation scripts: `data_utils.py`, `data_to_parquet.py` (Darwinex logs → parquet), `bars1m_to_excel.py` (parquet ticks → 1m CSV), `csv_1m_to_npz.py` (CSV → NPZ), `parquet_to_npz.py` (generic parquet → NPZ), and `feeds.py` (NPZ loader for Numba).
+  - `engine/core.py` — Numba backtesting core (`BacktestConfig`, `BacktestResult`, `run_backtest_with_signals`).
+  - `analytics/` — metrics (`metrics.py`), pandas converters (`reporting.py`), plots (`plots.py`), exports (`backtest_output.py`), and best/worst trade visuals (`trade_plots.py`).
+  - `strategies/` — concrete strategies: `barrida_apertura.py`, `microstructure_reversal.py`, `microstructure_sweep.py`, plus `base.py` for shared types.
+  - `utils/` — shared utilities: `timing.py` (timers/logging) and `risk.py` (position sizing).
+  - `visualization/visualizacion.py` — early notebook-friendly visualization draft.
+- **Data folders (`data/`)**
+  - `raw/darwinex/<SYMBOL>/BID|ASK` — compressed Darwinex BID/ASK logs (e.g., `NDXm_BID_2021-04-09_14.log.gz`).
+  - `parquet/ticks/<SYMBOL>/<YEAR>/` — cleaned tick parquet shards (e.g., `NDXm_2021-04-09_14.parquet`).
+  - `parquet/bars_1m/<SYMBOL>/` — optional parquet 1-minute bars per year.
+  - `npz/<SYMBOL>/` — NPZ bundles (`<symbol>_all_1m.npz`) used by the engine.
+- **Outputs**
+  - `reports/` — generated plots and Excel/JSON summaries.
 
 ---
 
