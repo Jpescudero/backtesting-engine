@@ -123,7 +123,10 @@ def main() -> None:
 
     dataset.to_parquet(out_path)
 
-    print(f"Saved ML dataset to {out_path} with {len(dataset):,} rows and {dataset.shape[1]} columns")
+    print(
+        f"Saved ML dataset to {out_path} with {len(dataset):,} rows "
+        f"and {dataset.shape[1]} columns"
+    )
 
 
 if __name__ == "__main__":

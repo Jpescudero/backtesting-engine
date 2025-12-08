@@ -25,7 +25,12 @@ def main() -> None:
         default=0.2,
         help="Proportion for test split",
     )
-    parser.add_argument("--random-state", type=int, default=42, help="Random state for reproducibility")
+    parser.add_argument(
+        "--random-state",
+        type=int,
+        default=42,
+        help="Random state for reproducibility",
+    )
     args = parser.parse_args()
 
     ensure_directories_exist()
