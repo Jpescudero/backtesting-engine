@@ -261,6 +261,7 @@ def run_single_backtest(config: BacktestRunConfig) -> BacktestArtifacts:
             equity_plot_path = generate_main_plots(
                 result=result,
                 data=data,
+                strategy_name=config.strategy_name,
                 reports_dir=reports_dir,
                 show=not config.headless,
             )
@@ -273,6 +274,7 @@ def run_single_backtest(config: BacktestRunConfig) -> BacktestArtifacts:
             best_path, worst_path = generate_trade_plots(
                 trades_df=trades_df,
                 data=data,
+                strategy_name=config.strategy_name,
                 reports_dir=reports_dir,
                 show=not config.headless,
             )

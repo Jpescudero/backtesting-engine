@@ -214,6 +214,7 @@ def plot_best_and_worst_trades(
     data: OHLCVArrays,
     n_best: int = 6,
     cfg: Optional[BestWorstConfig] = None,
+    strategy_name: Optional[str] = None,
     save_best_path: Optional[Path] = None,
     save_worst_path: Optional[Path] = None,
     **kwargs,
@@ -273,7 +274,11 @@ def plot_best_and_worst_trades(
         for j in range(n_plots, len(axes_flat)):
             axes_flat[j].axis("off")
 
-        fig.tight_layout()
+        if strategy_name:
+            fig.suptitle(f"{side_label} trades - Estrategia: {strategy_name}", fontsize=14)
+            fig.tight_layout(rect=(0, 0, 1, 0.96))
+        else:
+            fig.tight_layout()
         return fig
 
     best_fig = _plot_trade_grid(best, "BEST")
