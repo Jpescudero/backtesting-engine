@@ -13,6 +13,7 @@ profile = "black"
 line_length = 100
 known_first_party = ["src"]
 skip = ["build", "dist", "data", "docs", "notebooks", "bench", "reports"]
+case_sensitive = false
 
 [tool.ruff]
 target-version = "py310"
