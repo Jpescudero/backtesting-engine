@@ -21,6 +21,7 @@ from src.pipeline.backtest_runner import (
     StrategyParams,
     run_single_backtest,
 )
+from src.strategies.microstructure_sweep import SweepParams
 
 
 def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
@@ -30,7 +31,7 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--strategy",
         default="microstructure_reversal",
-        choices=["microstructure_reversal"],
+        choices=["microstructure_reversal", "microstructure_sweep"],
         help="Estrategia a ejecutar",
     )
     parser.add_argument("--ema-short", type=int, default=20, help="EMA corta para filtro de tendencia")
@@ -56,6 +57,26 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--exhaustion-body-max-ratio", type=float, default=0.5, help="Relación máxima cuerpo/rango para la vela de agotamiento")
     parser.add_argument("--shift-body-atr", type=float, default=0.45, help="Mínimo cuerpo de la vela shift en ATR")
     parser.add_argument("--structure-break-lookback", type=int, default=3, help="Ventana de ruptura de microestructura")
+
+    # Parámetros Microstructure Sweep
+    parser.add_argument("--sweep-lookback", type=int, default=SweepParams.sweep_lookback, help="Ventana de lookback para mínimos previos")
+    parser.add_argument("--min-sweep-break-atr", type=float, default=SweepParams.min_sweep_break_atr, help="Mínima ruptura del mínimo previo en ATR")
+    parser.add_argument("--min-lower-wick-body-ratio", type=float, default=SweepParams.min_lower_wick_body_ratio, help="Relación mínima mecha/cuerpo")
+    parser.add_argument("--min-sweep-range-atr", type=float, default=SweepParams.min_sweep_range_atr, help="Rango mínimo de la vela de barrida en ATR")
+    parser.add_argument("--confirm-body-atr", type=float, default=SweepParams.confirm_body_atr, help="Cuerpo mínimo de la vela de confirmación en ATR")
+    parser.add_argument("--no-confirm-close-above-mid", action="store_false", dest="confirm_close_above_mid", help="Permitir cierres por debajo de la mitad de la vela de barrida")
+    parser.set_defaults(confirm_close_above_mid=SweepParams.confirm_close_above_mid)
+    parser.add_argument("--volume-period", type=int, default=SweepParams.volume_period, help="Periodo para volumen medio")
+    parser.add_argument("--min-rvol", type=float, default=SweepParams.min_rvol, help="Volumen relativo mínimo")
+    parser.add_argument("--vol-percentile-min", type=float, default=SweepParams.vol_percentile_min, help="Percentil inferior de volumen intradía")
+    parser.add_argument("--vol-percentile-max", type=float, default=SweepParams.vol_percentile_max, help="Percentil superior de volumen intradía")
+    parser.add_argument("--no-trend-filter", action="store_false", dest="use_trend_filter", help="Desactivar filtro de tendencia EMA")
+    parser.set_defaults(use_trend_filter=SweepParams.use_trend_filter)
+    parser.add_argument("--max-atr-mult-intraday", type=float, default=SweepParams.max_atr_mult_intraday, help="Umbral máximo de ATR intradía")
+    parser.add_argument("--max-trades-per-day", type=int, default=SweepParams.max_trades_per_day, help="Máximo de operaciones diarias")
+    parser.add_argument("--sweep-max-holding-bars", type=int, default=SweepParams.max_holding_bars, help="Máximo de velas en posición para Sweep")
+    parser.add_argument("--atr-stop-mult", type=float, default=SweepParams.atr_stop_mult, help="Buffer ATR para stop loss")
+    parser.add_argument("--rr-multiple", type=float, default=SweepParams.rr_multiple, help="Multiplicador RR para TP")
     parser.add_argument("--config-file", type=str, default=None,
                         help="Ruta a archivo de configuración simple key=value")
     parser.add_argument("--initial-cash", type=float, default=None,
@@ -128,6 +149,28 @@ def print_timings(timings: dict) -> None:
 
 def _print_run_context(run_config: BacktestRunConfig) -> None:
     cfg = run_config.backtest_config
+    if run_config.strategy_name == "microstructure_sweep":
+        params_summary = " | ".join(
+            [
+                f"EMA {run_config.strategy_params.ema_short}/{run_config.strategy_params.ema_long}",
+                f"ATR tf {run_config.strategy_params.atr_timeframe} p{run_config.strategy_params.atr_timeframe_period}",
+                f"ATR {run_config.strategy_params.atr_period}",
+                f"sweep lb {run_config.strategy_params.sweep_lookback}",
+                f"wick≥{run_config.strategy_params.min_lower_wick_body_ratio}×cuerpo",
+                f"body conf ≥{run_config.strategy_params.confirm_body_atr} ATR",
+                f"RR {run_config.strategy_params.rr_multiple}x",
+            ]
+        )
+    else:
+        params_summary = " | ".join(
+            [
+                f"EMA {run_config.strategy_params.ema_short}/{run_config.strategy_params.ema_long}",
+                f"ATR tf {run_config.strategy_params.atr_timeframe} p{run_config.strategy_params.atr_timeframe_period}",
+                f"ATR {run_config.strategy_params.atr_period}",
+                f"pullback {run_config.strategy_params.min_pullback_atr}-{run_config.strategy_params.max_pullback_atr} ATR",
+                f"shift ≥{run_config.strategy_params.shift_body_atr} ATR",
+            ]
+        )
     header = [
         ("Símbolo/TF", f"{run_config.symbol} / {run_config.timeframe}"),
         ("Capital inicial", _format_money(cfg.initial_cash)),
@@ -144,17 +187,7 @@ def _print_run_context(run_config: BacktestRunConfig) -> None:
         ),
         (
             "Params estrategia",
-            " | ".join(
-                [
-                    f"EMA {run_config.strategy_params.ema_short}/{run_config.strategy_params.ema_long}",
-                    "ATR tf "
-                    f"{run_config.strategy_params.atr_timeframe}"
-                    f" p{run_config.strategy_params.atr_timeframe_period}",
-                    f"ATR {run_config.strategy_params.atr_period}",
-                    f"pullback {run_config.strategy_params.min_pullback_atr}-{run_config.strategy_params.max_pullback_atr} ATR",
-                    f"shift ≥{run_config.strategy_params.shift_body_atr} ATR",
-                ]
-            ),
+            params_summary,
         ),
         ("Años train", ",".join(map(str, run_config.train_years)) if run_config.train_years else "(todos)"),
         (
@@ -278,21 +311,123 @@ def main(argv: Iterable[str] | None = None) -> None:
     test_years = _get_setting(_parse_years(args.test_years), config_file_values, "test_years", None, _parse_years)
     use_test_years = _get_setting(args.use_test_years, config_file_values, "use_test_years", False, lambda v: str(v).lower() == "true")
 
-    strategy_params = StrategyParams(
-        ema_short=args.ema_short,
-        ema_long=args.ema_long,
-        atr_period=args.atr_period,
-        atr_timeframe=args.atr_timeframe,
-        atr_timeframe_period=args.atr_timeframe_period,
-        min_pullback_atr=args.min_pullback_atr,
-        max_pullback_atr=args.max_pullback_atr,
-        max_pullback_bars=args.max_pullback_bars,
-        exhaustion_close_min=args.exhaustion_close_min,
-        exhaustion_close_max=args.exhaustion_close_max,
-        exhaustion_body_max_ratio=args.exhaustion_body_max_ratio,
-        shift_body_atr=args.shift_body_atr,
-        structure_break_lookback=args.structure_break_lookback,
-    )
+    if strategy_name == "microstructure_sweep":
+        sweep_defaults = SweepParams()
+        strategy_params = SweepParams(
+            ema_short=_get_setting(args.ema_short, config_file_values, "ema_short", sweep_defaults.ema_short, int),
+            ema_long=_get_setting(args.ema_long, config_file_values, "ema_long", sweep_defaults.ema_long, int),
+            atr_period=_get_setting(args.atr_period, config_file_values, "atr_period", sweep_defaults.atr_period, int),
+            atr_timeframe=_get_setting(args.atr_timeframe, config_file_values, "atr_timeframe", sweep_defaults.atr_timeframe),
+            atr_timeframe_period=_get_setting(
+                args.atr_timeframe_period,
+                config_file_values,
+                "atr_timeframe_period",
+                sweep_defaults.atr_timeframe_period,
+                int,
+            ),
+            sweep_lookback=_get_setting(
+                args.sweep_lookback, config_file_values, "sweep_lookback", sweep_defaults.sweep_lookback, int
+            ),
+            min_sweep_break_atr=_get_setting(
+                args.min_sweep_break_atr,
+                config_file_values,
+                "min_sweep_break_atr",
+                sweep_defaults.min_sweep_break_atr,
+                float,
+            ),
+            min_lower_wick_body_ratio=_get_setting(
+                args.min_lower_wick_body_ratio,
+                config_file_values,
+                "min_lower_wick_body_ratio",
+                sweep_defaults.min_lower_wick_body_ratio,
+                float,
+            ),
+            min_sweep_range_atr=_get_setting(
+                args.min_sweep_range_atr,
+                config_file_values,
+                "min_sweep_range_atr",
+                sweep_defaults.min_sweep_range_atr,
+                float,
+            ),
+            confirm_body_atr=_get_setting(
+                args.confirm_body_atr, config_file_values, "confirm_body_atr", sweep_defaults.confirm_body_atr, float
+            ),
+            confirm_close_above_mid=_get_setting(
+                args.confirm_close_above_mid,
+                config_file_values,
+                "confirm_close_above_mid",
+                sweep_defaults.confirm_close_above_mid,
+                lambda v: str(v).lower() == "true",
+            ),
+            volume_period=_get_setting(
+                args.volume_period, config_file_values, "volume_period", sweep_defaults.volume_period, int
+            ),
+            min_rvol=_get_setting(args.min_rvol, config_file_values, "min_rvol", sweep_defaults.min_rvol, float),
+            vol_percentile_min=_get_setting(
+                args.vol_percentile_min,
+                config_file_values,
+                "vol_percentile_min",
+                sweep_defaults.vol_percentile_min,
+                float,
+            ),
+            vol_percentile_max=_get_setting(
+                args.vol_percentile_max,
+                config_file_values,
+                "vol_percentile_max",
+                sweep_defaults.vol_percentile_max,
+                float,
+            ),
+            use_trend_filter=_get_setting(
+                args.use_trend_filter,
+                config_file_values,
+                "use_trend_filter",
+                sweep_defaults.use_trend_filter,
+                lambda v: str(v).lower() == "true",
+            ),
+            max_atr_mult_intraday=_get_setting(
+                args.max_atr_mult_intraday,
+                config_file_values,
+                "max_atr_mult_intraday",
+                sweep_defaults.max_atr_mult_intraday,
+                float,
+            ),
+            max_trades_per_day=_get_setting(
+                args.max_trades_per_day,
+                config_file_values,
+                "max_trades_per_day",
+                sweep_defaults.max_trades_per_day,
+                int,
+            ),
+            max_holding_bars=_get_setting(
+                args.sweep_max_holding_bars,
+                config_file_values,
+                "max_holding_bars",
+                sweep_defaults.max_holding_bars,
+                int,
+            ),
+            atr_stop_mult=_get_setting(
+                args.atr_stop_mult, config_file_values, "atr_stop_mult", sweep_defaults.atr_stop_mult, float
+            ),
+            rr_multiple=_get_setting(
+                args.rr_multiple, config_file_values, "rr_multiple", sweep_defaults.rr_multiple, float
+            ),
+        )
+    else:
+        strategy_params = StrategyParams(
+            ema_short=args.ema_short,
+            ema_long=args.ema_long,
+            atr_period=args.atr_period,
+            atr_timeframe=args.atr_timeframe,
+            atr_timeframe_period=args.atr_timeframe_period,
+            min_pullback_atr=args.min_pullback_atr,
+            max_pullback_atr=args.max_pullback_atr,
+            max_pullback_bars=args.max_pullback_bars,
+            exhaustion_close_min=args.exhaustion_close_min,
+            exhaustion_close_max=args.exhaustion_close_max,
+            exhaustion_body_max_ratio=args.exhaustion_body_max_ratio,
+            shift_body_atr=args.shift_body_atr,
+            structure_break_lookback=args.structure_break_lookback,
+        )
 
     backtest_config = BacktestConfig(
         initial_cash=initial_cash,
