@@ -5,7 +5,7 @@ This project is a **high-performance intraday backtesting engine** built in **Py
 Latest highlights:
 
 - 🔄 **End-to-end data pipeline**: automatically generate tick parquet files, 1-minute OHLCV CSVs, and NPZ arrays ready for Numba. Convenience helpers (`ensure_ticks_and_csv`, `ensure_npz_from_csv`, `prepare_npz_dataset`) make sure all artifacts exist before a run.
-- 🧭 **Strategy catalog**: includes the **Microstructure Reversal** strategy with rich parameters (EMA/ATR context, pullback and exhaustion detection, structure-break filter, bullish shift candle) plus the existing opening-sweep example.
+- 🧭 **Strategy catalog**: includes the **Microstructure Reversal** strategy (EMA/ATR context, pullback + exhaustion detection, structure-break filter, bullish shift candle), the **Microstructure Sweep** (stop-hunt + absorption with volume/volatility filters), and the existing opening-sweep example.
 - ⚙️ **Configurable backtesting core**: Numba-accelerated engine with stop-loss / take-profit, max duration, commission, slippage, entry thresholds, and position sizing via `BacktestConfig`.
 - 📈 **Analytics & reports**: automatic conversion to pandas structures, equity/trade metrics, and lightweight Excel + JSON export with size-safe helpers. Generates equity + monthly trades plots and best/worst trade snapshots.
 - 🎛️ **CLI orchestration**: `main.py` wraps a full pipeline (data prep → signals → backtest → reports) with flags for symbol, timeframe, strategy tuning, SL/TP, slippage/commission, train/test years, and headless plotting.
@@ -38,6 +38,8 @@ The framework aims to be a **research-ready, production-oriented foundation** fo
 | `src/analytics/plots.py`               | Equity/trade visualization tools |
 | `src/analytics/trade_plots.py`         | Best/worst trade charting |
 | `src/strategies/`                      | Strategy modules |
+| `src/strategies/microstructure_reversal.py` | Microstructure Reversal strategy (pullback + structure break) |
+| `src/strategies/microstructure_sweep.py` | Microstructure Sweep strategy (stop-hunt + absorption) |
 | `src/utils/`                           | Timing utilities and shared helpers |
 | `data/raw/darwinex/`                   | Raw tick logs (BID/ASK) |
 | `data/parquet/ticks/`                  | Parquet files of cleaned ticks |
@@ -100,6 +102,7 @@ The framework aims to be a **research-ready, production-oriented foundation** fo
 All strategies live in `src/strategies/` and return **signal arrays** aligned with OHLCV data.
 
 - **Microstructure Reversal** (`StrategyMicrostructureReversal`): long-only, trend-filtered setup that detects pullbacks, exhaustion bars, a bullish shift candle, and a break of short-term structure. Parameters cover EMA/ATR configuration, pullback depth/length, exhaustion candle shape, shift candle strength, and structure-break lookback.
+- **Microstructure Sweep** (`StrategyMicrostructureSweep`): captures stop-hunts followed by absorption and confirmation. Uses dual ATR timeframes, minimum sweep breaks of previous lows, wick/body and range filters, confirmation candle requirements, session windows, per-day trade caps, and volume/ATR guards (relative volume + intraday ATR median).
 - **Opening Sweep / Liquidity Grab** (`StrategyBarridaApertura`): example strategy for high-volume morning sweeps.
 
 Example:
@@ -117,6 +120,21 @@ strategy = StrategyMicrostructureReversal(
 )
 
 signals = strategy.generate_signals(data).signals
+```
+
+Microstructure Sweep example (external ATR for a dedicated timeframe):
+
+```python
+from src.strategies.microstructure_sweep import StrategyMicrostructureSweep
+
+sweep = StrategyMicrostructureSweep(
+    sweep_lookback=15,
+    min_sweep_break_atr=0.35,
+    min_lower_wick_body_ratio=1.5,
+    confirm_body_atr=0.35,
+)
+
+signals = sweep.generate_signals(data, external_atr=lower_tf_atr).signals
 ```
 
 ### 2.4 Backtesting engine
@@ -191,7 +209,9 @@ Located under `src/analytics/` and `src/pipeline/reporting.py`:
 Common flags:
 
 - `--symbol`, `--timeframe`: select instrument and bar size.
-- Strategy tuning: `--ema-short`, `--ema-long`, `--atr-period`, `--min-pullback-atr`, `--max-pullback-atr`, `--max-pullback-bars`, `--exhaustion-close-min`, `--exhaustion-close-max`, `--exhaustion-body-max-ratio`, `--shift-body-atr`, `--structure-break-lookback`.
+- Strategy selection: `--strategy microstructure_reversal` (default) or `--strategy microstructure_sweep`.
+- Microstructure Reversal tuning: `--ema-short`, `--ema-long`, `--atr-period`, `--min-pullback-atr`, `--max-pullback-atr`, `--max-pullback-bars`, `--exhaustion-close-min`, `--exhaustion-close-max`, `--exhaustion-body-max-ratio`, `--shift-body-atr`, `--structure-break-lookback`.
+- Microstructure Sweep tuning: `--atr-timeframe`, `--atr-timeframe-period`, `--sweep-lookback`, `--min-sweep-break-atr`, `--min-lower-wick-body-ratio`, `--min-sweep-range-atr`, `--confirm-body-atr`, `--no-confirm-close-above-mid`, `--volume-period`, `--min-rvol`, `--vol-percentile-min`, `--vol-percentile-max`, `--max-atr-mult-intraday`, `--max-trades-per-day`, `--sweep-max-holding-bars`, `--atr-stop-mult`, `--rr-multiple`.
 - Risk/execution: `--initial-cash`, `--commission`, `--trade-size`, `--slippage`, `--sl-pct`, `--tp-pct`, `--max-bars`, `--entry-threshold`.
 - Data splits: `--train-years 2019,2020`, `--test-years 2021,2022`, `--use-test-years`.
 - Reporting: `--no-report-files`, `--no-main-plots`, `--no-trade-plots`, `--headless`.
@@ -203,6 +223,17 @@ python main.py --symbol NDXm --timeframe 1m --ema-short 20 --ema-long 50 \
   --atr-period 20 --min-pullback-atr 0.3 --max-pullback-atr 1.3 --max-pullback-bars 12 \
   --sl-pct 0.01 --tp-pct 0.02 --commission 1.0 --slippage 0.0 --trade-size 1.0 \
   --train-years 2019,2020 --test-years 2021,2022 --headless
+```
+
+Microstructure Sweep quick start:
+
+```bash
+python main.py --strategy microstructure_sweep --symbol NDXm --timeframe 1m \
+  --atr-timeframe 1m --atr-timeframe-period 10 --sweep-lookback 15 --min-sweep-break-atr 0.35 \
+  --min-lower-wick-body-ratio 1.5 --min-sweep-range-atr 0.5 --confirm-body-atr 0.35 \
+  --volume-period 20 --min-rvol 1.0 --vol-percentile-min 0.8 --vol-percentile-max 1.0 \
+  --max-trades-per-day 4 --sweep-max-holding-bars 60 --atr-stop-mult 0.2 --rr-multiple 2.5 \
+  --sl-pct 0.01 --tp-pct 0.02 --commission 1.0 --slippage 0.0 --trade-size 1.0 --headless
 ```
 
 ---
