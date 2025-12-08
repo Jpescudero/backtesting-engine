@@ -330,11 +330,24 @@ class StrategyMicrostructureReversal:
         time_stop_bars = np.zeros(n, dtype=int)
 
         atr_entry = atr
-        sl_long = c - 0.8 * atr_entry
-        sl_short = c + 0.8 * atr_entry
+        atr_stop_dist = self.params.atr_stop_mult * atr_entry
+        structure_buffer = self.params.structure_buffer_atr * atr_entry
 
-        tp_long = c + 1.2 * atr_entry
-        tp_short = c - 1.2 * atr_entry
+        swing_low = pd.Series(low).rolling(self.params.structure_stop_lookback, min_periods=1).min().to_numpy()
+        swing_high = pd.Series(h).rolling(self.params.structure_stop_lookback, min_periods=1).max().to_numpy()
+
+        atr_sl_long = c - atr_stop_dist
+        atr_sl_short = c + atr_stop_dist
+
+        structure_sl_long = swing_low - structure_buffer
+        structure_sl_short = swing_high + structure_buffer
+
+        sl_long = np.minimum(atr_sl_long, structure_sl_long)
+        sl_short = np.maximum(atr_sl_short, structure_sl_short)
+
+        rr = self.params.atr_tp_mult
+        tp_long = c + rr * (c - sl_long)
+        tp_short = c - rr * (sl_short - c)
 
         # Break-even tras movimiento a favor
         future_max_high = self._forward_rolling_max(h, p.breakeven_lookahead)
