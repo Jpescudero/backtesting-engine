@@ -128,6 +128,7 @@ Para compartir enlaces rápidos del repositorio (README, scripts principales, es
 - **Cobertura**: se exige un mínimo del 80 % (`fail_under = 80`) y se genera `coverage.xml`.
 - **CI (GitHub Actions)**: el workflow `.github/workflows/ci.yml` instala `requirements-dev.txt` y ejecuta Ruff, Black, isort, mypy y `pytest --cov` subiendo el XML como artefacto.
 - **Pre-commit**: `.pre-commit-config.yaml` añade hooks para Ruff (lint + format), Black, isort y comprobaciones básicas de espacio en blanco. Ejecuta `pre-commit install` tras clonar para activar los hooks locales.
+- **Resumen en lenguaje llano**: si quieres una versión corta y sin tecnicismos sobre por qué se añadió todo esto, mira `docs/tooling_explicacion.md`.
 
 ### 1.4 Project layout reference from `backtesting_project_structure.txt`
 
