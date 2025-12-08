@@ -7,7 +7,6 @@ import json
 from pathlib import Path
 
 import joblib
-import numpy as np
 import pandas as pd
 from sklearn.ensemble import GradientBoostingClassifier
 from sklearn.metrics import classification_report
@@ -20,7 +19,12 @@ from src.config.paths import DATA_DIR, MODELS_DIR, REPORTS_DIR, ensure_directori
 def main() -> None:
     parser = argparse.ArgumentParser(description="Train baseline directional model for NDXm")
     parser.add_argument("--dataset-file", type=str, required=True, help="Path to parquet dataset")
-    parser.add_argument("--test-size", type=float, default=0.2, help="Proportion for test split")
+    parser.add_argument(
+        "--test-size",
+        type=float,
+        default=0.2,
+        help="Proportion for test split",
+    )
     parser.add_argument("--random-state", type=int, default=42, help="Random state for reproducibility")
     args = parser.parse_args()
 
