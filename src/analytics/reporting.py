@@ -17,7 +17,14 @@ def equity_to_series(
     Convierte la equity (np.ndarray) en una serie de pandas indexada por timestamp.
     """
     ts = pd.to_datetime(data.ts, unit="ns", utc=True)
-    return pd.Series(result.equity, index=ts, name="equity")
+
+    # Hay feeds con timestamps duplicados (p. ej. al concatenar ficheros), lo que
+    # provoca trazos verticales en la curva de equity. Nos quedamos con el valor
+    # más reciente de cada timestamp y aseguramos orden creciente.
+    equity_series = pd.Series(result.equity, index=ts, name="equity")
+    equity_series = equity_series.groupby(level=0).last().sort_index()
+
+    return equity_series
 
 
 def trades_to_dataframe(
