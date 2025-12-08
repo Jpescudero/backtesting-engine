@@ -4,8 +4,7 @@ import json
 import logging
 from dataclasses import asdict, dataclass, field, is_dataclass
 from pathlib import Path
-from typing import Any, Dict, Mapping, Optional, Sequence, Union, overload
-from typing import Literal
+from typing import Dict, Mapping, Optional, Sequence
 
 import matplotlib
 import numpy as np
@@ -137,7 +136,7 @@ class BacktestRunConfig:
     resume_snapshot: Optional[Path] = None
     run_metadata_path: Optional[Path] = None
     replay_metadata: Optional[Path] = None
-    strategy_params: StrategyParamsType = field(default_factory=StrategyParams)
+    strategy_params: StrategyParams | SweepParams = field(default_factory=StrategyParams)
     backtest_config: BacktestConfig = field(
         default_factory=lambda: BacktestConfig(
             initial_cash=100_000.0,
@@ -267,16 +266,21 @@ def run_single_backtest(config: BacktestRunConfig) -> BacktestArtifacts:
     with timed_step(timings, "02_carga_feed_npz"):
         feed = NPZOHLCVFeed(symbol=config.symbol, timeframe=config.timeframe)
 
-        use_test_years = config.use_test_years or (
-            config.test_years is not None and not config.train_years
-        )
+        test_years: Sequence[int] | None = config.test_years
+        train_years: Sequence[int] | None = config.train_years
+
+        use_test_years = config.use_test_years or (test_years is not None and not train_years)
+
+        if use_test_years and not test_years:
+            raise ValueError("'use_test_years' está a True pero no se han definido test_years")
 
         if use_test_years:
-            data = feed.load_years(_validated_years(config.test_years, label="test_years"))
-            logger.info("Usando años de prueba: %s", config.test_years)
-        elif config.train_years is not None:
-            data = feed.load_years(config.train_years)
-            logger.info("Usando años de entrenamiento: %s", config.train_years)
+            assert test_years is not None
+            data = feed.load_years(test_years)
+            logger.info("Usando años de prueba: %s", test_years)
+        elif train_years:
+            data = feed.load_years(train_years)
+            logger.info("Usando años de entrenamiento: %s", train_years)
         else:
             data = feed.load_all()
 
@@ -284,57 +288,59 @@ def run_single_backtest(config: BacktestRunConfig) -> BacktestArtifacts:
         if atr_tf and atr_tf != config.timeframe:
             atr_feed = NPZOHLCVFeed(symbol=config.symbol, timeframe=atr_tf)
             if use_test_years:
-                atr_data = atr_feed.load_years(
-                    _validated_years(config.test_years, label="test_years")
-                )
-            elif config.train_years is not None:
-                atr_data = atr_feed.load_years(config.train_years)
+                assert test_years is not None
+                atr_data = atr_feed.load_years(test_years)
+            elif train_years:
+                atr_data = atr_feed.load_years(train_years)
             else:
                 atr_data = atr_feed.load_all()
 
     with timed_step(timings, "03_generar_senales_estrategia"):
         strategy: StrategyMicrostructureReversal | StrategyMicrostructureSweep
+        strategy_params: StrategyParams | SweepParams
         if config.strategy_name == "microstructure_reversal":
             assert isinstance(config.strategy_params, StrategyParams)
+            strategy_params = config.strategy_params
             strategy = StrategyMicrostructureReversal(
-                ema_short=config.strategy_params.ema_short,
-                ema_long=config.strategy_params.ema_long,
-                atr_period=config.strategy_params.atr_period,
-                atr_timeframe=config.strategy_params.atr_timeframe,
-                atr_timeframe_period=config.strategy_params.atr_timeframe_period,
-                min_pullback_atr=config.strategy_params.min_pullback_atr,
-                max_pullback_atr=config.strategy_params.max_pullback_atr,
-                max_pullback_bars=config.strategy_params.max_pullback_bars,
-                exhaustion_close_min=config.strategy_params.exhaustion_close_min,
-                exhaustion_close_max=config.strategy_params.exhaustion_close_max,
-                exhaustion_body_max_ratio=config.strategy_params.exhaustion_body_max_ratio,
-                shift_body_atr=config.strategy_params.shift_body_atr,
-                structure_break_lookback=config.strategy_params.structure_break_lookback,
+                ema_short=strategy_params.ema_short,
+                ema_long=strategy_params.ema_long,
+                atr_period=strategy_params.atr_period,
+                atr_timeframe=strategy_params.atr_timeframe,
+                atr_timeframe_period=strategy_params.atr_timeframe_period,
+                min_pullback_atr=strategy_params.min_pullback_atr,
+                max_pullback_atr=strategy_params.max_pullback_atr,
+                max_pullback_bars=strategy_params.max_pullback_bars,
+                exhaustion_close_min=strategy_params.exhaustion_close_min,
+                exhaustion_close_max=strategy_params.exhaustion_close_max,
+                exhaustion_body_max_ratio=strategy_params.exhaustion_body_max_ratio,
+                shift_body_atr=strategy_params.shift_body_atr,
+                structure_break_lookback=strategy_params.structure_break_lookback,
             )
         else:
             assert isinstance(config.strategy_params, SweepParams)
+            strategy_params = config.strategy_params
             strategy = StrategyMicrostructureSweep(
-                ema_short=config.strategy_params.ema_short,
-                ema_long=config.strategy_params.ema_long,
-                atr_period=config.strategy_params.atr_period,
-                atr_timeframe=config.strategy_params.atr_timeframe,
-                atr_timeframe_period=config.strategy_params.atr_timeframe_period,
-                sweep_lookback=config.strategy_params.sweep_lookback,
-                min_sweep_break_atr=config.strategy_params.min_sweep_break_atr,
-                min_lower_wick_body_ratio=config.strategy_params.min_lower_wick_body_ratio,
-                min_sweep_range_atr=config.strategy_params.min_sweep_range_atr,
-                confirm_body_atr=config.strategy_params.confirm_body_atr,
-                confirm_close_above_mid=config.strategy_params.confirm_close_above_mid,
-                volume_period=config.strategy_params.volume_period,
-                min_rvol=config.strategy_params.min_rvol,
-                vol_percentile_min=config.strategy_params.vol_percentile_min,
-                vol_percentile_max=config.strategy_params.vol_percentile_max,
-                use_trend_filter=config.strategy_params.use_trend_filter,
-                max_atr_mult_intraday=config.strategy_params.max_atr_mult_intraday,
-                max_trades_per_day=config.strategy_params.max_trades_per_day,
-                max_holding_bars=config.strategy_params.max_holding_bars,
-                atr_stop_mult=config.strategy_params.atr_stop_mult,
-                rr_multiple=config.strategy_params.rr_multiple,
+                ema_short=strategy_params.ema_short,
+                ema_long=strategy_params.ema_long,
+                atr_period=strategy_params.atr_period,
+                atr_timeframe=strategy_params.atr_timeframe,
+                atr_timeframe_period=strategy_params.atr_timeframe_period,
+                sweep_lookback=strategy_params.sweep_lookback,
+                min_sweep_break_atr=strategy_params.min_sweep_break_atr,
+                min_lower_wick_body_ratio=strategy_params.min_lower_wick_body_ratio,
+                min_sweep_range_atr=strategy_params.min_sweep_range_atr,
+                confirm_body_atr=strategy_params.confirm_body_atr,
+                confirm_close_above_mid=strategy_params.confirm_close_above_mid,
+                volume_period=strategy_params.volume_period,
+                min_rvol=strategy_params.min_rvol,
+                vol_percentile_min=strategy_params.vol_percentile_min,
+                vol_percentile_max=strategy_params.vol_percentile_max,
+                use_trend_filter=strategy_params.use_trend_filter,
+                max_atr_mult_intraday=strategy_params.max_atr_mult_intraday,
+                max_trades_per_day=strategy_params.max_trades_per_day,
+                max_holding_bars=strategy_params.max_holding_bars,
+                atr_stop_mult=strategy_params.atr_stop_mult,
+                rr_multiple=strategy_params.rr_multiple,
             )
 
         atr_override = None
@@ -467,7 +473,7 @@ def load_run_config_from_metadata(path: Path | str) -> BacktestRunConfig:
 
     strategy_name = meta.get("strategy_name", "microstructure_reversal")
     strat_params_dict = meta.get("strategy_params", {}) or {}
-    strategy_params: StrategyParamsType
+    strategy_params: StrategyParams | SweepParams
     if strategy_name == "microstructure_sweep":
         strategy_params = SweepParams(**strat_params_dict)
     else:
