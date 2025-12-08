@@ -16,6 +16,7 @@ def plot_equity_curve(
     result: BacktestResult,
     data: OHLCVArrays,
     ax: Optional[plt.Axes] = None,
+    strategy_name: Optional[str] = None,
 ) -> plt.Axes:
     """
     Dibuja la curva de equity en un gráfico.
@@ -25,7 +26,10 @@ def plot_equity_curve(
 
     eq = equity_to_series(result, data)
     ax.plot(eq.index, eq.values)
-    ax.set_title("Curva de Equity")
+    title = "Curva de Equity"
+    if strategy_name:
+        title = f"{title} - {strategy_name}"
+    ax.set_title(title)
     ax.set_xlabel("Tiempo")
     ax.set_ylabel("Equity")
 
@@ -36,6 +40,7 @@ def plot_trades_per_month(
     result: BacktestResult,
     data: OHLCVArrays,
     ax: Optional[plt.Axes] = None,
+    strategy_name: Optional[str] = None,
 ) -> plt.Axes:
     """
     Dibuja un gráfico de barras con el número de trades por mes,
@@ -46,7 +51,10 @@ def plot_trades_per_month(
 
     trades_df = trades_to_dataframe(result, data)
     if trades_df.empty:
-        ax.set_title("Número de trades por mes (sin trades)")
+        base_title = "Número de trades por mes (sin trades)"
+        if strategy_name:
+            base_title = f"{base_title} - {strategy_name}"
+        ax.set_title(base_title)
         return ax
 
     # Serie con 1 por trade indexada por fecha de entrada
@@ -56,7 +64,10 @@ def plot_trades_per_month(
     trades_per_month = s.resample("ME").sum()
 
     ax.bar(trades_per_month.index, trades_per_month.values)
-    ax.set_title("Número de trades por mes")
+    base_title = "Número de trades por mes"
+    if strategy_name:
+        base_title = f"{base_title} - {strategy_name}"
+    ax.set_title(base_title)
     ax.set_xlabel("Mes")
     ax.set_ylabel("Nº de trades")
 

@@ -32,11 +32,20 @@ def compute_analytics(result, data, equity_series=None, trades_df=None):
     return equity_series, trades_df, equity_stats, trade_stats
 
 
-def generate_report_files(reports_dir: Path, symbol: str, strategy_name: str, equity_series, trades_df,
-                          equity_stats: Dict, trade_stats: Dict, meta: Dict) -> Tuple[Path, Path]:
+def generate_report_files(
+    reports_dir: Path,
+    symbol: str,
+    strategy_name: str,
+    equity_series,
+    trades_df,
+    equity_stats: Dict,
+    trade_stats: Dict,
+    meta: Dict,
+) -> Tuple[Path, Path]:
+    suffix = _strategy_suffix(strategy_name)
     excel_path, json_path = save_backtest_summary_to_excel(
         base_dir=reports_dir,
-        filename=f"backtest_{symbol}_{strategy_name}.xlsx",
+        filename=f"backtest_{symbol}_{suffix}.xlsx",
         symbol=symbol,
         strategy_name=strategy_name,
         equity_series=equity_series,
@@ -48,16 +57,26 @@ def generate_report_files(reports_dir: Path, symbol: str, strategy_name: str, eq
     return excel_path, json_path
 
 
-def generate_main_plots(result, data, reports_dir: Path | None, show: bool) -> Path | None:
+def _strategy_suffix(strategy_name: str) -> str:
+    """Devuelve un sufijo seguro para nombres de archivo basado en la estrategia."""
+
+    return strategy_name.replace(" ", "_")
+
+
+def generate_main_plots(
+    result, data, strategy_name: str, reports_dir: Path | None, show: bool
+) -> Path | None:
     fig, (ax1, ax2) = plt.subplots(2, 1, sharex=False)
-    plot_equity_curve(result, data, ax=ax1)
-    plot_trades_per_month(result, data, ax=ax2)
-    plt.tight_layout()
+    plot_equity_curve(result, data, ax=ax1, strategy_name=strategy_name)
+    plot_trades_per_month(result, data, ax=ax2, strategy_name=strategy_name)
+    fig.suptitle(f"Estrategia: {strategy_name}", fontsize=14)
+    plt.tight_layout(rect=(0, 0, 1, 0.96))
 
     save_path = None
     if reports_dir is not None:
         reports_dir.mkdir(parents=True, exist_ok=True)
-        save_path = reports_dir / "equity_trades.png"
+        filename = f"equity_trades_{_strategy_suffix(strategy_name)}.png"
+        save_path = reports_dir / filename
         fig.savefig(save_path, dpi=150)
 
     if show:
@@ -67,9 +86,12 @@ def generate_main_plots(result, data, reports_dir: Path | None, show: bool) -> P
     return save_path
 
 
-def generate_trade_plots(trades_df, data, reports_dir: Path | None, show: bool) -> Tuple[Path | None, Path | None]:
-    best_path = (reports_dir / "best_trades.png") if reports_dir else None
-    worst_path = (reports_dir / "worst_trades.png") if reports_dir else None
+def generate_trade_plots(
+    trades_df, data, strategy_name: str, reports_dir: Path | None, show: bool
+) -> Tuple[Path | None, Path | None]:
+    suffix = _strategy_suffix(strategy_name)
+    best_path = (reports_dir / f"best_trades_{suffix}.png") if reports_dir else None
+    worst_path = (reports_dir / f"worst_trades_{suffix}.png") if reports_dir else None
 
     best_fig, worst_fig = plot_best_and_worst_trades(
         trades_df=trades_df,
@@ -81,6 +103,7 @@ def generate_trade_plots(trades_df, data, reports_dir: Path | None, show: bool) 
         direction_col="direction",
         window=30,
         figsize=(14, 10),
+        strategy_name=strategy_name,
         save_best_path=best_path,
         save_worst_path=worst_path,
     )

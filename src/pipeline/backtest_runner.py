@@ -3,7 +3,7 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Dict, Optional
+from typing import Dict, Mapping, Optional
 
 import matplotlib
 import numpy as np
@@ -26,6 +26,14 @@ from src.utils.timing import timed_step
 
 
 logger = logging.getLogger(__name__)
+
+
+def _effective_strategy_name(config_name: str, meta: Optional[Mapping[str, object]]) -> str:
+    if meta and isinstance(meta, Mapping):
+        meta_name = meta.get("strategy_name")
+        if meta_name:
+            return str(meta_name)
+    return config_name
 
 
 @dataclass
@@ -199,8 +207,11 @@ def run_single_backtest(config: BacktestRunConfig) -> BacktestArtifacts:
             )
 
         strat_res = strategy.generate_signals(data, external_atr=atr_override)
+    strategy_label = _effective_strategy_name(
+        config.strategy_name, getattr(strat_res, "meta", None)
+    )
     n_signals = int((strat_res.signals != 0).sum())
-    logger.info("Estrategia %s: %s señales generadas", config.strategy_name, n_signals)
+    logger.info("Estrategia %s: %s señales generadas", strategy_label, n_signals)
 
     with timed_step(timings, "04_backtest_motor"):
         atr_array = None
@@ -244,7 +255,7 @@ def run_single_backtest(config: BacktestRunConfig) -> BacktestArtifacts:
             excel_path, json_path = generate_report_files(
                 reports_dir=reports_dir,
                 symbol=config.symbol,
-                strategy_name=config.strategy_name,
+                strategy_name=strategy_label,
                 equity_series=equity_series,
                 trades_df=trades_df,
                 equity_stats=equity_stats,
@@ -261,6 +272,7 @@ def run_single_backtest(config: BacktestRunConfig) -> BacktestArtifacts:
             equity_plot_path = generate_main_plots(
                 result=result,
                 data=data,
+                strategy_name=strategy_label,
                 reports_dir=reports_dir,
                 show=not config.headless,
             )
@@ -273,6 +285,7 @@ def run_single_backtest(config: BacktestRunConfig) -> BacktestArtifacts:
             best_path, worst_path = generate_trade_plots(
                 trades_df=trades_df,
                 data=data,
+                strategy_name=strategy_label,
                 reports_dir=reports_dir,
                 show=not config.headless,
             )
