@@ -39,7 +39,7 @@ def _to_serializable(value: Any) -> Any:
     diccionarios relativamente pequeños).
     """
     # Dataclasses
-    if is_dataclass(value):
+    if is_dataclass(value) and not isinstance(value, type):
         return {k: _to_serializable(v) for k, v in asdict(value).items()}
 
     # NumPy escalares

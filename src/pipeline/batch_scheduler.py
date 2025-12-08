@@ -75,7 +75,7 @@ def _apply_overrides(config: BacktestRunConfig, overrides: Mapping[str, object])
 
 
 def _strategy_params_dict(strategy_params: object) -> MutableMapping[str, object]:
-    if is_dataclass(strategy_params):
+    if is_dataclass(strategy_params) and not isinstance(strategy_params, type):
         return asdict(strategy_params)
     return {
         k: getattr(strategy_params, k)
