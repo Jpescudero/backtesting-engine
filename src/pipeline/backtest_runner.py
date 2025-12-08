@@ -237,6 +237,9 @@ def run_single_backtest(config: BacktestRunConfig) -> BacktestArtifacts:
         config.strategy_params, strategy_name=config.strategy_name
     )
     strategy_params = config.strategy_params
+    use_test_years = config.use_test_years or (
+        config.test_years is not None and not config.train_years
+    )
     seeds = seed_everything(config.seed)
 
     resume_snapshot: BacktestSnapshot | None = None
@@ -267,9 +270,6 @@ def run_single_backtest(config: BacktestRunConfig) -> BacktestArtifacts:
     atr_data: Optional[OHLCVArrays] = None
     with timed_step(timings, "02_carga_feed_npz"):
         feed = NPZOHLCVFeed(symbol=config.symbol, timeframe=config.timeframe)
-
-        test_years: Sequence[int] | None = config.test_years
-        train_years: Sequence[int] | None = config.train_years
 
         if use_test_years:
             data = feed.load_years(_validated_years(config.test_years, label="test_years"))
