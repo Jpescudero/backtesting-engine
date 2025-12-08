@@ -48,6 +48,7 @@ class StrategyParams:
 class BacktestRunConfig:
     symbol: str = "NDXm"
     timeframe: str = "1m"
+    strategy_name: str = "microstructure_reversal"
     generate_report_files: bool = True
     generate_main_plots: bool = True
     generate_trade_plots: bool = True
@@ -94,6 +95,11 @@ def _configure_matplotlib(headless: bool) -> None:
 
 def run_single_backtest(config: BacktestRunConfig) -> BacktestArtifacts:
     _configure_matplotlib(config.headless)
+
+    if config.strategy_name != "microstructure_reversal":
+        raise ValueError(
+            "Solo se soporta la estrategia 'microstructure_reversal' en este momento"
+        )
 
     timings: Dict[str, float] = {}
     reports_dir = config.reports_dir or (REPORTS_DIR / config.symbol).resolve()
