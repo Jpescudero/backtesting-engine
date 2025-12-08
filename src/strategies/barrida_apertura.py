@@ -7,6 +7,7 @@ from typing import Any, Dict, Tuple
 
 import numpy as np
 import pandas as pd
+
 from src.data.feeds import OHLCVArrays  # tipo contenedor ts, o, h, low, c, v
 
 

@@ -8,6 +8,7 @@ from typing import Dict, Mapping, Optional
 
 import matplotlib
 import numpy as np
+
 from src.analytics.reporting import equity_to_series, trades_to_dataframe
 from src.config.paths import REPORTS_DIR
 from src.data.feeds import NPZOHLCVFeed, OHLCVArrays

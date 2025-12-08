@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import Iterable, Mapping, MutableMapping, Sequence
 
 import pandas as pd
+
 from src.config.paths import REPORTS_DIR
 from src.pipeline.backtest_runner import (
     BacktestArtifacts,

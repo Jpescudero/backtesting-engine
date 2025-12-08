@@ -5,6 +5,7 @@ from typing import Any, Dict, Optional
 
 import numpy as np
 import pandas as pd
+
 from src.data.feeds import OHLCVArrays
 from src.strategies.base import StrategyResult
 

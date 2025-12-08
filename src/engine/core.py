@@ -7,6 +7,7 @@ from typing import Any, Dict, List, Mapping, Tuple
 
 import numpy as np
 from numba import njit
+
 from src.data.feeds import OHLCVArrays
 
 # =====================

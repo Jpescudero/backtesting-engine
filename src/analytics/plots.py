@@ -6,6 +6,7 @@ from typing import Optional
 
 import matplotlib.pyplot as plt
 import pandas as pd
+
 from src.analytics.reporting import equity_to_series, trades_to_dataframe
 from src.data.feeds import OHLCVArrays
 from src.engine.core import BacktestResult

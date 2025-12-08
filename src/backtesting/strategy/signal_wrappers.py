@@ -4,6 +4,7 @@ from datetime import datetime
 from typing import Callable, Sequence
 
 import numpy as np
+
 from src.backtesting.core.models import MarketDataBatch, OrderRequest
 from src.backtesting.strategy.interfaces import Strategy
 

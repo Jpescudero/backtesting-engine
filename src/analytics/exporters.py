@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Iterable, Mapping
 
 import pandas as pd
+
 from src.analytics.collectors import MetricCollector
 
 

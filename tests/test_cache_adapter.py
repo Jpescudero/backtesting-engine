@@ -4,6 +4,7 @@ import time
 from pathlib import Path
 
 import pytest
+
 from src.data.cache_adapter import MarketDataAdapter
 
 pd = pytest.importorskip("pandas")

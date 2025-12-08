@@ -9,6 +9,7 @@ import numpy as np
 import pandas as pd
 from numba import njit
 from numpy.lib.stride_tricks import sliding_window_view
+
 from src.data.feeds import OHLCVArrays
 from src.strategies.base import StrategyResult
 

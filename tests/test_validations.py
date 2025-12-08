@@ -5,6 +5,7 @@ from pathlib import Path
 
 import numpy as np
 import pytest
+
 from src.backtesting.core.models import MarketDataBatch, OrderRequest
 from src.backtesting.data.npz_loader import NPZDataLoader
 from src.backtesting.execution.simulated_broker import SimulatedBroker

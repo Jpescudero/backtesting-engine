@@ -6,6 +6,7 @@ from typing import Iterable
 
 import numpy as np
 import pytest
+
 from src.backtesting.core.models import LatencyProfile, MarketDataBatch, OrderRequest
 from src.backtesting.core.timeline import ensure_sequential_orders
 from src.backtesting.data.npz_loader import NPZDataLoader

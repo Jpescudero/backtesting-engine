@@ -5,6 +5,7 @@ from datetime import datetime, timedelta
 from typing import Iterable
 
 import numpy as np
+
 from src.data.feeds import OHLCVArrays
 
 
