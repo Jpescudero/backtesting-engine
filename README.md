@@ -117,7 +117,11 @@ This table expands on the individual scripts and modules so you can quickly unde
 - **notebooks/** — Research & experiments
 - **reports/** — Generated reports
 
-### 1.3 Project layout reference from `backtesting_project_structure.txt`
+### 1.3 Guía de enlaces en GitHub
+
+Para compartir enlaces rápidos del repositorio (README, scripts principales, estrategias, pruebas, notebooks, etc.) con ChatGPT u otros colaboradores, consulta la [guía de links en GitHub](docs/github_links_guide.md) y sustituye `<OWNER>/<REPO>` por el nombre real del repositorio.
+
+### 1.4 Project layout reference from `backtesting_project_structure.txt`
 
 For a quick orientation, this mirrors the annotated structure documented in `backtesting_project_structure.txt` (useful when browsing the repo or mapping local folders):
 
