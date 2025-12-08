@@ -32,8 +32,16 @@ def compute_analytics(result, data, equity_series=None, trades_df=None):
     return equity_series, trades_df, equity_stats, trade_stats
 
 
-def generate_report_files(reports_dir: Path, symbol: str, strategy_name: str, equity_series, trades_df,
-                          equity_stats: Dict, trade_stats: Dict, meta: Dict) -> Tuple[Path, Path]:
+def generate_report_files(
+    reports_dir: Path,
+    symbol: str,
+    strategy_name: str,
+    equity_series,
+    trades_df,
+    equity_stats: Dict,
+    trade_stats: Dict,
+    meta: Dict,
+) -> Tuple[Path, Path]:
     suffix = _strategy_suffix(strategy_name)
     excel_path, json_path = save_backtest_summary_to_excel(
         base_dir=reports_dir,
@@ -59,8 +67,8 @@ def generate_main_plots(
     result, data, strategy_name: str, reports_dir: Path | None, show: bool
 ) -> Path | None:
     fig, (ax1, ax2) = plt.subplots(2, 1, sharex=False)
-    plot_equity_curve(result, data, ax=ax1)
-    plot_trades_per_month(result, data, ax=ax2)
+    plot_equity_curve(result, data, ax=ax1, strategy_name=strategy_name)
+    plot_trades_per_month(result, data, ax=ax2, strategy_name=strategy_name)
     fig.suptitle(f"Estrategia: {strategy_name}", fontsize=14)
     plt.tight_layout(rect=(0, 0, 1, 0.96))
 
