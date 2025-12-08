@@ -14,11 +14,12 @@ from src.config.paths import REPORTS_DIR, ensure_directories_exist
 from src.data.feeds import NPZOHLCVFeed, OHLCVArrays
 from src.strategies.barrida_apertura import StrategyBarridaApertura
 
-
 SessionWindow = Tuple[str, str]
 
 
-def load_ndxm_sessions(years: Iterable[int], windows: Tuple[SessionWindow, ...], tz: str) -> pd.DataFrame:
+def load_ndxm_sessions(
+    years: Iterable[int], windows: Tuple[SessionWindow, ...], tz: str
+) -> pd.DataFrame:
     """Load 1m bars and keep only the desired intraday windows."""
 
     feed = NPZOHLCVFeed(symbol="NDXm", timeframe="1m")
