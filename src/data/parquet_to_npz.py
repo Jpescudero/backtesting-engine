@@ -7,6 +7,7 @@ from typing import Optional, Sequence
 
 import numpy as np
 import pandas as pd
+from pandas.api.types import is_categorical_dtype
 
 from src.config.paths import (
     PARQUET_BARS_1M_DIR,
@@ -26,11 +27,12 @@ def bars_df_to_npz_arrays(df: pd.DataFrame) -> dict[str, np.ndarray]:
 
     Además:
       - Elimina filas con NaN en open/high/low/close.
+      - Normaliza dtypes (float32 para precios/volumen, categoría para símbolos).
     """
     if not isinstance(df.index, pd.DatetimeIndex):
         raise ValueError("El DataFrame de barras debe tener un DatetimeIndex.")
 
-    # Aseguramos orden temporal
+    # Aseguramos orden temporal (vista ordenada, sin copiar datos innecesarios)
     df = df.sort_index()
 
     # Comprobamos columnas básicas
@@ -52,14 +54,17 @@ def bars_df_to_npz_arrays(df: pd.DataFrame) -> dict[str, np.ndarray]:
     else:
         df["volume"] = df["volume"].fillna(0.0)
 
-    # Índice datetime -> int64 (nanosegundos desde epoch)
-    ts = df.index.astype("int64").values
+    if "symbol" in df and not is_categorical_dtype(df["symbol"]):
+        df["symbol"] = df["symbol"].astype("category")
 
-    o = df["open"].to_numpy(dtype=np.float64)
-    h = df["high"].to_numpy(dtype=np.float64)
-    low = df["low"].to_numpy(dtype=np.float64)
-    c = df["close"].to_numpy(dtype=np.float64)
-    v = df["volume"].to_numpy(dtype=np.float64)
+    # Índice datetime -> int64 (nanosegundos desde epoch)
+    ts = df.index.view("int64")
+
+    o = df["open"].to_numpy(dtype=np.float32, copy=False)
+    h = df["high"].to_numpy(dtype=np.float32, copy=False)
+    low = df["low"].to_numpy(dtype=np.float32, copy=False)
+    c = df["close"].to_numpy(dtype=np.float32, copy=False)
+    v = df["volume"].to_numpy(dtype=np.float32, copy=False)
 
     return {"ts": ts, "o": o, "h": h, "l": low, "c": c, "v": v}
 

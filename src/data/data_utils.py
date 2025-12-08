@@ -4,6 +4,7 @@ from pathlib import Path
 from typing import Iterator, Sequence
 
 import pandas as pd
+from pandas.api.types import is_categorical_dtype
 
 
 # =========================
@@ -87,6 +88,47 @@ def load_all_ticks(
     frames = [pd.read_parquet(p) for p in files]
     df = pd.concat(frames).sort_index()
     return df
+
+
+def iter_ticks_by_date(
+    parquet_root: str | Path,
+    symbol: str | None = None,
+    year: int | None = None,
+    pattern: str = "*.parquet",
+) -> Iterator[tuple[pd.Timestamp, pd.DataFrame]]:
+    """
+    Itera sobre los ficheros de ticks devolviendo DataFrames por fecha (chunk).
+
+    Esto evita cargar todos los ticks en memoria y permite procesar cada día
+    o tramo de fichero de forma incremental.
+    """
+
+    files = list_tick_files(parquet_root, symbol=symbol, year=year, pattern=pattern)
+    if not files:
+        raise FileNotFoundError(
+            f"No se han encontrado parquet en {parquet_root} "
+            f"para symbol={symbol!r}, year={year!r}"
+        )
+
+    for path in files:
+        df = pd.read_parquet(path)
+
+        if "symbol" in df and not is_categorical_dtype(df["symbol"]):
+            df["symbol"] = df["symbol"].astype("category")
+
+        if not isinstance(df.index, pd.DatetimeIndex):
+            for candidate in ("timestamp", "datetime", "ts"):
+                if candidate in df.columns:
+                    df[candidate] = pd.to_datetime(df[candidate], utc=True)
+                    df = df.set_index(candidate)
+                    break
+            else:
+                raise TypeError(
+                    f"El fichero {path} no contiene índice datetime ni columna temporal estándar"
+                )
+
+        df = df.sort_index()
+        yield df.index[0], df
 
 
 def iter_ticks_by_year(
