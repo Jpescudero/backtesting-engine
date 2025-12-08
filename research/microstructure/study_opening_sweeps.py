@@ -3,16 +3,29 @@
 from __future__ import annotations
 
 import argparse
+import sys
 from pathlib import Path
-from typing import Iterable, Tuple
+from typing import TYPE_CHECKING, Iterable, Tuple
 
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
-from src.config.paths import REPORTS_DIR, ensure_directories_exist
-from src.data.feeds import NPZOHLCVFeed, OHLCVArrays
-from src.strategies.barrida_apertura import StrategyBarridaApertura
+if TYPE_CHECKING:
+    from src.data.feeds import OHLCVArrays
+
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+
+
+def _ensure_project_root_on_path() -> None:
+    """Add repository root to ``sys.path`` when executed directly."""
+
+    project_root_str = str(PROJECT_ROOT)
+    if project_root_str not in sys.path:
+        sys.path.insert(0, project_root_str)
+
+
+_ensure_project_root_on_path()
 
 SessionWindow = Tuple[str, str]
 
@@ -21,6 +34,8 @@ def load_ndxm_sessions(
     years: Iterable[int], windows: Tuple[SessionWindow, ...], tz: str
 ) -> pd.DataFrame:
     """Load 1m bars and keep only the desired intraday windows."""
+
+    from src.data.feeds import NPZOHLCVFeed
 
     feed = NPZOHLCVFeed(symbol="NDXm", timeframe="1m")
     data = feed.load_years(list(years))
@@ -51,7 +66,9 @@ def load_ndxm_sessions(
     return df.loc[mask]
 
 
-def to_ohlcv_arrays(df: pd.DataFrame) -> OHLCVArrays:
+def to_ohlcv_arrays(df: pd.DataFrame) -> "OHLCVArrays":
+    from src.data.feeds import OHLCVArrays
+
     ts = df.index.view("int64")
     return OHLCVArrays(
         ts=ts,
@@ -97,6 +114,9 @@ def save_plots(returns: pd.Series, output_dir: Path) -> None:
 
 
 def main() -> None:
+    from src.config.paths import REPORTS_DIR, ensure_directories_exist
+    from src.strategies.barrida_apertura import StrategyBarridaApertura
+
     parser = argparse.ArgumentParser(description="Study opening sweep occurrences and outcomes")
     parser.add_argument("--start-year", type=int, required=True)
     parser.add_argument("--end-year", type=int, required=True)
