@@ -22,7 +22,13 @@ def equity_to_series(
     # provoca trazos verticales en la curva de equity. Nos quedamos con el valor
     # más reciente de cada timestamp y aseguramos orden creciente.
     equity_series = pd.Series(result.equity, index=ts, name="equity")
+    equity_series = equity_series.replace([np.inf, -np.inf], np.nan).dropna()
     equity_series = equity_series.groupby(level=0).last().sort_index()
+
+    # Si hay valores espurios a cero (p. ej. por arrays sin inicializar al
+    # reanudar o concatenar datasets), los filtramos para que la curva y las
+    # métricas usen únicamente puntos válidos.
+    equity_series = equity_series[equity_series != 0]
 
     return equity_series
 
