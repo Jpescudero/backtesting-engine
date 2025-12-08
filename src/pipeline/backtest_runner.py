@@ -4,7 +4,8 @@ import json
 import logging
 from dataclasses import asdict, dataclass, field, is_dataclass
 from pathlib import Path
-from typing import Dict, Mapping, Optional, Sequence, Union
+from typing import Any, Dict, Mapping, Optional, Sequence, Union, overload
+from typing import Literal
 
 import matplotlib
 import numpy as np
@@ -59,12 +60,17 @@ def _build_run_metadata(
     *, config: BacktestRunConfig, seeds: Mapping[str, object], snapshot_path: Path | None
 ) -> Dict[str, object]:
     strategy_params = config.strategy_params
+    strategy_params_dict = (
+        asdict(strategy_params)
+        if is_dataclass(strategy_params) and not isinstance(strategy_params, type)
+        else _params_mapping(strategy_params)
+    )
 
     return {
         "symbol": config.symbol,
         "timeframe": config.timeframe,
         "strategy_name": config.strategy_name,
-        "strategy_params": asdict(strategy_params),
+        "strategy_params": strategy_params_dict,
         "backtest_config": asdict(config.backtest_config),
         "train_years": config.train_years,
         "test_years": config.test_years,
@@ -162,11 +168,11 @@ class BacktestArtifacts:
     reports: BacktestReports
 
 
-def _params_mapping(params: object) -> Mapping[str, object]:
-    if is_dataclass(params):
-        return asdict(params)
+def _params_mapping(params: object) -> Dict[str, Any]:
+    if is_dataclass(params) and not isinstance(params, type):
+        return {k: v for k, v in asdict(params).items()}
     if isinstance(params, Mapping):
-        return params
+        return {str(k): v for k, v in params.items()}
     return {
         key: getattr(params, key)
         for key in dir(params)
@@ -174,17 +180,39 @@ def _params_mapping(params: object) -> Mapping[str, object]:
     }
 
 
+@overload
 def _coerce_strategy_params(
-    params: StrategyParamsType | Mapping[str, object], strategy_name: str
+    params: StrategyParamsType | Mapping[str, object], *, strategy_name: Literal["microstructure_sweep"]
+) -> SweepParams:
+    ...
+
+
+@overload
+def _coerce_strategy_params(
+    params: StrategyParamsType | Mapping[str, object], *, strategy_name: Literal["microstructure_reversal"]
+) -> StrategyParams:
+    ...
+
+
+@overload
+def _coerce_strategy_params(
+    params: StrategyParamsType | Mapping[str, object], *, strategy_name: str
 ) -> StrategyParamsType:
+    ...
+
+
+def _coerce_strategy_params(
+    params: StrategyParamsType | Mapping[str, object], *, strategy_name: str
+) -> StrategyParamsType:
+    params_dict: Dict[str, Any] = _params_mapping(params)
     if strategy_name == "microstructure_sweep":
         if isinstance(params, SweepParams):
             return params
-        return SweepParams(**_params_mapping(params))
+        return SweepParams(**params_dict)
 
     if isinstance(params, StrategyParams):
         return params
-    return StrategyParams(**_params_mapping(params))
+    return StrategyParams(**params_dict)
 
 
 def _validated_years(years: Optional[Sequence[int]], *, label: str) -> Sequence[int]:
@@ -261,7 +289,9 @@ def run_single_backtest(config: BacktestRunConfig) -> BacktestArtifacts:
                 atr_data = atr_feed.load_all()
 
     with timed_step(timings, "03_generar_senales_estrategia"):
+        strategy: StrategyMicrostructureReversal | StrategyMicrostructureSweep
         if config.strategy_name == "microstructure_reversal":
+            assert isinstance(config.strategy_params, StrategyParams)
             strategy = StrategyMicrostructureReversal(
                 ema_short=config.strategy_params.ema_short,
                 ema_long=config.strategy_params.ema_long,
@@ -433,6 +463,7 @@ def load_run_config_from_metadata(path: Path | str) -> BacktestRunConfig:
 
     strategy_name = meta.get("strategy_name", "microstructure_reversal")
     strat_params_dict = meta.get("strategy_params", {}) or {}
+    strategy_params: StrategyParamsType
     if strategy_name == "microstructure_sweep":
         strategy_params = SweepParams(**strat_params_dict)
     else:
