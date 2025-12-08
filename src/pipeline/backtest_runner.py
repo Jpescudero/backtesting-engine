@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass, field, is_dataclass
 from pathlib import Path
 from typing import Dict, Mapping, Optional, Sequence
 
@@ -58,11 +58,18 @@ def _save_snapshots(path: Path, snapshots) -> None:
 def _build_run_metadata(
     *, config: BacktestRunConfig, seeds: Mapping[str, object], snapshot_path: Path | None
 ) -> Dict[str, object]:
+    strategy_params = config.strategy_params
+    strategy_params_dict = (
+        asdict(strategy_params)
+        if is_dataclass(strategy_params) and not isinstance(strategy_params, type)
+        else _params_mapping(strategy_params)
+    )
+
     return {
         "symbol": config.symbol,
         "timeframe": config.timeframe,
         "strategy_name": config.strategy_name,
-        "strategy_params": asdict(config.strategy_params),
+        "strategy_params": strategy_params_dict,
         "backtest_config": asdict(config.backtest_config),
         "train_years": config.train_years,
         "test_years": config.test_years,
@@ -105,6 +112,9 @@ class StrategyParams:
     exhaustion_body_max_ratio: float = 0.5
     shift_body_atr: float = 0.45
     structure_break_lookback: int = 3
+
+
+StrategyParamsType = Union[StrategyParams, SweepParams]
 
 
 @dataclass
@@ -157,6 +167,63 @@ class BacktestArtifacts:
     reports: BacktestReports
 
 
+def _params_mapping(params: object) -> Dict[str, Any]:
+    if is_dataclass(params) and not isinstance(params, type):
+        return {k: v for k, v in asdict(params).items()}
+    if isinstance(params, Mapping):
+        return {str(k): v for k, v in params.items()}
+    return {
+        key: getattr(params, key)
+        for key in dir(params)
+        if not key.startswith("_") and not callable(getattr(params, key))
+    }
+
+
+@overload
+def _coerce_strategy_params(
+    params: StrategyParamsType | Mapping[str, object],
+    *,
+    strategy_name: Literal["microstructure_sweep"],
+) -> SweepParams:
+    ...
+
+
+@overload
+def _coerce_strategy_params(
+    params: StrategyParamsType | Mapping[str, object],
+    *,
+    strategy_name: Literal["microstructure_reversal"],
+) -> StrategyParams:
+    ...
+
+
+@overload
+def _coerce_strategy_params(
+    params: StrategyParamsType | Mapping[str, object], *, strategy_name: str
+) -> StrategyParamsType:
+    ...
+
+
+def _coerce_strategy_params(
+    params: StrategyParamsType | Mapping[str, object], *, strategy_name: str
+) -> StrategyParamsType:
+    params_dict: Dict[str, Any] = _params_mapping(params)
+    if strategy_name == "microstructure_sweep":
+        if isinstance(params, SweepParams):
+            return params
+        return SweepParams(**params_dict)
+
+    if isinstance(params, StrategyParams):
+        return params
+    return StrategyParams(**params_dict)
+
+
+def _validated_years(years: Optional[Sequence[int]], *, label: str) -> Sequence[int]:
+    if years is None:
+        raise ValueError(f"'{label}' está a None pero se esperaba una lista de años")
+    return years
+
+
 def _configure_matplotlib(headless: bool) -> None:
     if headless:
         matplotlib.use("Agg")
@@ -165,6 +232,9 @@ def _configure_matplotlib(headless: bool) -> None:
 def run_single_backtest(config: BacktestRunConfig) -> BacktestArtifacts:
     _configure_matplotlib(config.headless)
 
+    config.strategy_params = _coerce_strategy_params(
+        config.strategy_params, strategy_name=config.strategy_name
+    )
     seeds = seed_everything(config.seed)
 
     resume_snapshot: BacktestSnapshot | None = None

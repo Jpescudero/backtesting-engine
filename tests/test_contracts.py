@@ -78,7 +78,7 @@ def test_signal_adapter_respects_contract(sample_market_data: MarketDataBatch) -
     for idx in range(sample_market_data.size):
         batches.append(strategy.on_bar(idx, sample_market_data))
 
-    assert ensure_sequential_orders(batches)
+    assert ensure_sequential_orders([list(batch) for batch in batches])
     flattened: Iterable[OrderRequest] = (order for batch in batches for order in batch)
     for order in flattened:
         assert order.quantity == pytest.approx(2.0)
