@@ -7,6 +7,7 @@ import numpy as np
 import pandas as pd
 
 from src.data.feeds import OHLCVArrays
+from src.engine.registries import strategy_registry
 from src.strategies.base import StrategyResult
 
 
@@ -301,3 +302,7 @@ class StrategyMicrostructureSweep:
         }
 
         return StrategyResult(signals=signals, meta=meta_summary)
+
+
+# Registro por defecto
+strategy_registry.register("microstructure_sweep")(StrategyMicrostructureSweep)

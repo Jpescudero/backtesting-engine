@@ -9,6 +9,7 @@ from typing import List, Optional, Sequence, Tuple
 import numpy as np
 
 from src.config.paths import NPZ_DIR, ensure_directories_exist
+from src.engine.registries import feed_registry
 
 
 @dataclass
@@ -187,6 +188,10 @@ class NPZOHLCVFeed:
         """
         all_data = self.load_all()
         return split_ohlcv_train_test(all_data, train_years, test_years)
+
+
+# Registro por defecto
+feed_registry.register("npz")(NPZOHLCVFeed)
 
 
 if __name__ == "__main__":

@@ -137,6 +137,68 @@ sweep = StrategyMicrostructureSweep(
 signals = sweep.generate_signals(data, external_atr=lower_tf_atr).signals
 ```
 
+### 2.4 Registries, plugins & custom components
+
+The project exposes lightweight registries in `src/engine/registries.py` so that strategies, feeds,
+brokers, and cost models can be resolved **by name** (useful for CLI flags or config files). Built-in
+components register themselves on import, and external plugins can be discovered via Python entry
+points.
+
+**Built-in usage (no packaging required)**
+
+```python
+from src.engine.registries import strategy_registry
+from src.strategies.microstructure_reversal import StrategyMicrostructureReversal
+
+# Already registered under the key "microstructure_reversal"
+strategy = strategy_registry.create("microstructure_reversal", ema_short=12, ema_long=26)
+```
+
+**Registering a new strategy**
+
+```python
+from src.engine.registries import strategy_registry
+from src.strategies.base import StrategyResult
+
+
+class StrategyMyPattern:
+    def generate_signals(self, data):
+        return StrategyResult(signals=..., meta={"strategy_name": "my_pattern"})
+
+
+# Make it available as strategy_registry.create("my_pattern", ...)
+strategy_registry.register("my_pattern")(StrategyMyPattern)
+```
+
+**Registering a custom cost model** (any callable that returns an adjustment; you decide the
+signature for your executor):
+
+```python
+from src.engine.registries import cost_model_registry
+
+
+def dynamic_commission(order, *, equity):
+    return 0.0002 * order.notional if equity > 50_000 else 0.0003 * order.notional
+
+
+cost_model_registry.register("dynamic_commission")(dynamic_commission)
+```
+
+**Plugin discovery via entry points (optional)**
+
+Expose factories from another package by adding an entry point in `setup.cfg` or `pyproject.toml`:
+
+```ini
+[options.entry_points]
+backtesting_engine.strategies =
+    my_pattern = my_package.strategies:StrategyMyPattern
+backtesting_engine.cost_models =
+    dynamic_commission = my_package.costs:dynamic_commission
+```
+
+At runtime the registries call `load_plugin_entrypoints()` to import external components so they
+can be instantiated by name (e.g., `--strategy-name my_pattern`).
+
 ### 2.4 Backtesting engine
 
 Implemented in `src/engine/core.py`. Key features:

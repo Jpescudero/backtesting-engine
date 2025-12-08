@@ -9,6 +9,7 @@ import numpy as np
 import pandas as pd
 
 from src.data.feeds import OHLCVArrays  # tipo contenedor ts, o, h, low, c, v
+from src.engine.registries import strategy_registry
 
 
 @dataclass
@@ -244,3 +245,7 @@ class StrategyBarridaApertura:
         }
 
         return StrategyResult(signals=signals, meta=meta)
+
+
+# Registro por defecto
+strategy_registry.register("barrida_apertura")(StrategyBarridaApertura)

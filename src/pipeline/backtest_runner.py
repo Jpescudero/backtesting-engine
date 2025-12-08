@@ -12,6 +12,7 @@ from src.analytics.reporting import equity_to_series, trades_to_dataframe
 from src.config.paths import REPORTS_DIR
 from src.data.feeds import NPZOHLCVFeed, OHLCVArrays
 from src.engine.core import BacktestConfig, run_backtest_with_signals
+from src.engine.registries import load_plugin_entrypoints, strategy_registry
 from src.pipeline.data_pipeline import prepare_npz_dataset
 from src.pipeline.reporting import (
     BacktestReports,
@@ -105,10 +106,8 @@ def _configure_matplotlib(headless: bool) -> None:
 def run_single_backtest(config: BacktestRunConfig) -> BacktestArtifacts:
     _configure_matplotlib(config.headless)
 
-    if config.strategy_name not in {"microstructure_reversal", "microstructure_sweep"}:
-        raise ValueError(
-            "Solo se soportan las estrategias 'microstructure_reversal' y 'microstructure_sweep'"
-        )
+    # Cargar registros (incluye plugins externos si se configuraron entry points)
+    load_plugin_entrypoints()
 
     timings: Dict[str, float] = {}
     reports_dir = config.reports_dir or (REPORTS_DIR / config.symbol).resolve()
@@ -157,47 +156,8 @@ def run_single_backtest(config: BacktestRunConfig) -> BacktestArtifacts:
                 atr_data = atr_feed.load_all()
 
     with timed_step(timings, "03_generar_senales_estrategia"):
-        if config.strategy_name == "microstructure_reversal":
-            strategy = StrategyMicrostructureReversal(
-                ema_short=config.strategy_params.ema_short,
-                ema_long=config.strategy_params.ema_long,
-                atr_period=config.strategy_params.atr_period,
-                atr_timeframe=config.strategy_params.atr_timeframe,
-                atr_timeframe_period=config.strategy_params.atr_timeframe_period,
-                min_pullback_atr=config.strategy_params.min_pullback_atr,
-                max_pullback_atr=config.strategy_params.max_pullback_atr,
-                max_pullback_bars=config.strategy_params.max_pullback_bars,
-                exhaustion_close_min=config.strategy_params.exhaustion_close_min,
-                exhaustion_close_max=config.strategy_params.exhaustion_close_max,
-                exhaustion_body_max_ratio=config.strategy_params.exhaustion_body_max_ratio,
-                shift_body_atr=config.strategy_params.shift_body_atr,
-                structure_break_lookback=config.strategy_params.structure_break_lookback,
-            )
-        else:
-            assert isinstance(config.strategy_params, SweepParams)
-            strategy = StrategyMicrostructureSweep(
-                ema_short=config.strategy_params.ema_short,
-                ema_long=config.strategy_params.ema_long,
-                atr_period=config.strategy_params.atr_period,
-                atr_timeframe=config.strategy_params.atr_timeframe,
-                atr_timeframe_period=config.strategy_params.atr_timeframe_period,
-                sweep_lookback=config.strategy_params.sweep_lookback,
-                min_sweep_break_atr=config.strategy_params.min_sweep_break_atr,
-                min_lower_wick_body_ratio=config.strategy_params.min_lower_wick_body_ratio,
-                min_sweep_range_atr=config.strategy_params.min_sweep_range_atr,
-                confirm_body_atr=config.strategy_params.confirm_body_atr,
-                confirm_close_above_mid=config.strategy_params.confirm_close_above_mid,
-                volume_period=config.strategy_params.volume_period,
-                min_rvol=config.strategy_params.min_rvol,
-                vol_percentile_min=config.strategy_params.vol_percentile_min,
-                vol_percentile_max=config.strategy_params.vol_percentile_max,
-                use_trend_filter=config.strategy_params.use_trend_filter,
-                max_atr_mult_intraday=config.strategy_params.max_atr_mult_intraday,
-                max_trades_per_day=config.strategy_params.max_trades_per_day,
-                max_holding_bars=config.strategy_params.max_holding_bars,
-                atr_stop_mult=config.strategy_params.atr_stop_mult,
-                rr_multiple=config.strategy_params.rr_multiple,
-            )
+        strategy_kwargs = vars(config.strategy_params)
+        strategy = strategy_registry.create(config.strategy_name, **strategy_kwargs)
 
         atr_override = None
         if atr_data is not None:
