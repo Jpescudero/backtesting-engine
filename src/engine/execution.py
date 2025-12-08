@@ -1,4 +1,5 @@
 """Execution simulator with configurable latency, liquidity, and cost assumptions."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -82,7 +83,11 @@ class ExecutionSimulator:
         if quantity <= 0.0:
             raise ValueError("quantity must be positive")
 
-        book_levels = list(book) if book is not None else _build_default_book(mid_price, self.params.book_depth_levels)
+        book_levels = (
+            list(book)
+            if book is not None
+            else _build_default_book(mid_price, self.params.book_depth_levels)
+        )
         if not book_levels:
             raise ValueError("book must contain at least one level")
 
@@ -104,7 +109,9 @@ class ExecutionSimulator:
             remaining_qty -= tradable
 
         avg_price = cost_value / filled_qty if filled_qty > 0 else 0.0
-        slipped_price = self._compute_slippage_price(side, avg_price, filled_qty) if filled_qty > 0 else 0.0
+        slipped_price = (
+            self._compute_slippage_price(side, avg_price, filled_qty) if filled_qty > 0 else 0.0
+        )
         executed_value = slipped_price * filled_qty
 
         total_cost = self.params.fixed_cost + executed_value * self.params.variable_cost_pct

@@ -22,10 +22,9 @@ from src.pipeline.reporting import (
     generate_trade_plots,
 )
 from src.strategies.microstructure_reversal import StrategyMicrostructureReversal
-from src.strategies.microstructure_sweep import SweepParams, StrategyMicrostructureSweep
+from src.strategies.microstructure_sweep import StrategyMicrostructureSweep, SweepParams
 from src.utils.seeding import seed_everything
 from src.utils.timing import timed_step
-
 
 logger = logging.getLogger(__name__)
 

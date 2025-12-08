@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
-from typing import Iterable, Sequence
+from typing import Iterable
 
 import numpy as np
 
@@ -26,7 +26,14 @@ class MarketDataBatch:
     volume: np.ndarray
 
     def __post_init__(self) -> None:
-        lengths = {len(self.timestamps), len(self.open), len(self.high), len(self.low), len(self.close), len(self.volume)}
+        lengths = {
+            len(self.timestamps),
+            len(self.open),
+            len(self.high),
+            len(self.low),
+            len(self.close),
+            len(self.volume),
+        }
         if len(lengths) != 1:
             raise ValueError("Todos los arrays OHLCV deben tener la misma longitud")
 
@@ -51,7 +58,9 @@ class MarketDataBatch:
         )
 
     def to_ohlcv_arrays(self) -> OHLCVArrays:
-        return OHLCVArrays(ts=self.timestamps, o=self.open, h=self.high, low=self.low, c=self.close, v=self.volume)
+        return OHLCVArrays(
+            ts=self.timestamps, o=self.open, h=self.high, low=self.low, c=self.close, v=self.volume
+        )
 
     @classmethod
     def from_ohlcv(cls, data: OHLCVArrays) -> "MarketDataBatch":
@@ -148,4 +157,6 @@ class TradeTimeline:
         self.fills.extend(batch)
 
     def realized_pnl(self) -> float:
-        return sum(fill.notional if fill.order.side == "sell" else -fill.notional for fill in self.fills)
+        return sum(
+            fill.notional if fill.order.side == "sell" else -fill.notional for fill in self.fills
+        )

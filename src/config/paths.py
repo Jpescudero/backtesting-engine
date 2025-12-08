@@ -30,35 +30,35 @@ def _get_main_dir() -> Path:
 # Directorios base del proyecto
 # ================================
 
-PROJECT_ROOT   = _get_main_dir()          # carpeta donde vive main.py
-SRC_DIR        = PROJECT_ROOT / "src"
-DATA_DIR       = PROJECT_ROOT / "data"
-NOTEBOOKS_DIR  = PROJECT_ROOT / "notebooks"
-REPORTS_DIR    = PROJECT_ROOT / "reports"
+PROJECT_ROOT = _get_main_dir()  # carpeta donde vive main.py
+SRC_DIR = PROJECT_ROOT / "src"
+DATA_DIR = PROJECT_ROOT / "data"
+NOTEBOOKS_DIR = PROJECT_ROOT / "notebooks"
+REPORTS_DIR = PROJECT_ROOT / "reports"
 
 # Subcarpetas de código dentro de src/
-CONFIG_DIR       = SRC_DIR / "config"
-DATA_MODULE_DIR  = SRC_DIR / "data"
-ENGINE_DIR       = SRC_DIR / "engine"
-STRATEGIES_DIR   = SRC_DIR / "strategies"
+CONFIG_DIR = SRC_DIR / "config"
+DATA_MODULE_DIR = SRC_DIR / "data"
+ENGINE_DIR = SRC_DIR / "engine"
+STRATEGIES_DIR = SRC_DIR / "strategies"
 VISUALIZATION_DIR = SRC_DIR / "visualization"
-ANALYTICS_DIR    = SRC_DIR / "analytics"
+ANALYTICS_DIR = SRC_DIR / "analytics"
 
 
 # ================================
 # Subcarpetas de datos
 # ================================
 
-RAW_DATA_DIR       = DATA_DIR / "raw"
-DARWINEX_RAW_DIR   = RAW_DATA_DIR / "darwinex"
+RAW_DATA_DIR = DATA_DIR / "raw"
+DARWINEX_RAW_DIR = RAW_DATA_DIR / "darwinex"
 
-PARQUET_DIR         = DATA_DIR / "parquet"
-PARQUET_TICKS_DIR   = PARQUET_DIR / "ticks"
+PARQUET_DIR = DATA_DIR / "parquet"
+PARQUET_TICKS_DIR = PARQUET_DIR / "ticks"
 PARQUET_BARS_1M_DIR = PARQUET_DIR / "bars_1m"
 
-NPZ_DIR        = DATA_DIR / "npz"
+NPZ_DIR = DATA_DIR / "npz"
 # Carpeta específica para NDXm (tu símbolo actual principal)
-NPZ_NDXM_DIR   = NPZ_DIR / "NDXm"
+NPZ_NDXM_DIR = NPZ_DIR / "NDXm"
 
 OTHER_DATA_DIR = DATA_DIR / "other"
 

@@ -14,6 +14,8 @@ class Broker(ABC):
     """
 
     @abstractmethod
-    def process_orders(self, orders: Sequence[OrderRequest], data: MarketDataBatch) -> Sequence[OrderFill]:  # pragma: no cover
+    def process_orders(
+        self, orders: Sequence[OrderRequest], data: MarketDataBatch
+    ) -> Sequence[OrderFill]:  # pragma: no cover
         """Procesa un batch de órdenes y devuelve los fills resultantes."""
         raise NotImplementedError

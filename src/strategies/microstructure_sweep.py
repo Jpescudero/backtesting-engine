@@ -150,9 +150,8 @@ class StrategyMicrostructureSweep:
 
         idx_local = pd.to_datetime(ts, utc=True).tz_convert("Europe/Madrid")
         minutes_in_day = idx_local.hour * 60 + idx_local.minute
-        session_mask = (
-            ((minutes_in_day >= 8 * 60 + 50) & (minutes_in_day <= 10 * 60))
-            | ((minutes_in_day >= 15 * 60 + 20) & (minutes_in_day <= 16 * 60 + 30))
+        session_mask = ((minutes_in_day >= 8 * 60 + 50) & (minutes_in_day <= 10 * 60)) | (
+            (minutes_in_day >= 15 * 60 + 20) & (minutes_in_day <= 16 * 60 + 30)
         )
         day_index = idx_local.normalize()
 
@@ -223,8 +222,12 @@ class StrategyMicrostructureSweep:
             rvol = np.divide(v, vol_mean, out=np.ones_like(v, dtype=float), where=vol_mean > 0)
 
         vol_series = pd.Series(v, dtype=float)
-        vol_q_min = vol_series.groupby(day_index).transform(lambda x: x.quantile(p.vol_percentile_min))
-        vol_q_max = vol_series.groupby(day_index).transform(lambda x: x.quantile(p.vol_percentile_max))
+        vol_q_min = vol_series.groupby(day_index).transform(
+            lambda x: x.quantile(p.vol_percentile_min)
+        )
+        vol_q_max = vol_series.groupby(day_index).transform(
+            lambda x: x.quantile(p.vol_percentile_max)
+        )
         vol_filter = (vol_series >= vol_q_min) & (vol_series <= vol_q_max)
 
         high_rvol = rvol >= p.min_rvol

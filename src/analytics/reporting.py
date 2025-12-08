@@ -5,8 +5,8 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 
-from src.engine.core import BacktestResult
 from src.data.feeds import OHLCVArrays
+from src.engine.core import BacktestResult
 
 
 def equity_to_series(
@@ -45,9 +45,17 @@ def trades_to_dataframe(
         # Sin trades
         return pd.DataFrame(
             columns=[
-                "entry_time", "exit_time", "entry_idx", "exit_idx",
-                "entry_price", "exit_price", "qty", "pnl",
-                "holding_bars", "exit_reason_code", "exit_reason"
+                "entry_time",
+                "exit_time",
+                "entry_idx",
+                "exit_idx",
+                "entry_price",
+                "exit_price",
+                "qty",
+                "pnl",
+                "holding_bars",
+                "exit_reason_code",
+                "exit_reason",
             ]
         )
 
@@ -59,18 +67,20 @@ def trades_to_dataframe(
     entry_time = ts[entry_idx]
     exit_time = ts[exit_idx]
 
-    df = pd.DataFrame({
-        "entry_time": entry_time,
-        "exit_time": exit_time,
-        "entry_idx": entry_idx,
-        "exit_idx": exit_idx,
-        "entry_price": log["entry_price"],
-        "exit_price": log["exit_price"],
-        "qty": log["qty"],
-        "pnl": log["pnl"],
-        "holding_bars": log["holding_bars"],
-        "exit_reason_code": log["exit_reason"],
-    })
+    df = pd.DataFrame(
+        {
+            "entry_time": entry_time,
+            "exit_time": exit_time,
+            "entry_idx": entry_idx,
+            "exit_idx": exit_idx,
+            "entry_price": log["entry_price"],
+            "exit_price": log["exit_price"],
+            "qty": log["qty"],
+            "pnl": log["pnl"],
+            "holding_bars": log["holding_bars"],
+            "exit_reason_code": log["exit_reason"],
+        }
+    )
 
     stop_losses = result.extra.get("stop_losses") if result.extra else None
     take_profits = result.extra.get("take_profits") if result.extra else None

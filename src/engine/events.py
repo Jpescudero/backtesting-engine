@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
-from typing import Any, Callable, Iterable, Iterator, Literal
 import heapq
 import itertools
+from dataclasses import dataclass, field
+from typing import Any, Callable, Iterable, Iterator, Literal
 
 EventType = Literal["tick", "order_fill", "timer"]
 

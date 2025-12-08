@@ -5,10 +5,10 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable, Optional, Tuple
 
+import matplotlib.dates as mdates
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-import matplotlib.pyplot as plt
-import matplotlib.dates as mdates
 
 try:
     # mplfinance es ligero y cómodo para velas
@@ -35,9 +35,9 @@ def _ts_to_datetime(ts: np.ndarray) -> np.ndarray:
         return ts.astype("datetime64[ns]")
 
     ts0 = int(ts[0])
-    if ts0 > 10 ** 14:
+    if ts0 > 10**14:
         unit = "ns"
-    elif ts0 > 10 ** 11:
+    elif ts0 > 10**11:
         unit = "ms"
     else:
         unit = "s"

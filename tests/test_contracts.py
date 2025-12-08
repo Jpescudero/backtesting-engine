@@ -16,13 +16,16 @@ from src.backtesting.strategy.signal_wrappers import SignalStrategyAdapter, simp
 
 @pytest.fixture()
 def sample_market_data() -> MarketDataBatch:
-    ts = np.array([1_700_000_000_000_000_000, 1_700_000_060_000_000_000, 1_700_000_120_000_000_000], dtype=np.int64)
+    ts = np.array(
+        [1_700_000_000_000_000_000, 1_700_000_060_000_000_000, 1_700_000_120_000_000_000],
+        dtype=np.int64,
+    )
     o = np.array([100.0, 101.0, 101.5])
     h = o + 0.5
-    l = o - 0.5
+    low = o - 0.5
     c = o + 0.2
     v = np.array([10, 15, 12])
-    return MarketDataBatch(timestamps=ts, open=o, high=h, low=l, close=c, volume=v)
+    return MarketDataBatch(timestamps=ts, open=o, high=h, low=low, close=c, volume=v)
 
 
 @pytest.fixture()
@@ -30,7 +33,15 @@ def sample_npz(tmp_path: Path) -> Path:
     base_dir = tmp_path / "TEST"
     base_dir.mkdir(parents=True)
     ts = np.array([1_700_000_060_000_000_000, 1_700_000_000_000_000_000], dtype=np.int64)
-    np.savez(base_dir / "TEST_1m.npz", ts=ts, o=np.arange(2), h=np.arange(2), l=np.arange(2), c=np.arange(2), v=np.arange(2))
+    np.savez(
+        base_dir / "TEST_1m.npz",
+        ts=ts,
+        o=np.arange(2),
+        h=np.arange(2),
+        l=np.arange(2),
+        c=np.arange(2),
+        v=np.arange(2),
+    )
     return base_dir
 
 
@@ -58,7 +69,9 @@ def test_simulated_broker_applies_latency(sample_market_data: MarketDataBatch) -
 
 
 def test_signal_adapter_respects_contract(sample_market_data: MarketDataBatch) -> None:
-    strategy = SignalStrategyAdapter(symbol="TEST", signal_generator=simple_momentum_signal(threshold=0.001), qty=2.0)
+    strategy = SignalStrategyAdapter(
+        symbol="TEST", signal_generator=simple_momentum_signal(threshold=0.001), qty=2.0
+    )
     strategy.prepare(sample_market_data)
 
     batches = []

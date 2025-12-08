@@ -1,4 +1,5 @@
 """Exportadores ligeros para colecciones de métricas."""
+
 from __future__ import annotations
 
 import base64
@@ -75,7 +76,7 @@ def _plot_with_matplotlib(df: pd.DataFrame, y: str, title: str) -> str:
     plt.close(fig)
     buffer.seek(0)
     encoded = base64.b64encode(buffer.read()).decode("ascii")
-    return f'<img src="data:image/png;base64,{encoded}" alt="{title}">'  # noqa: B907
+    return f'<img src="data:image/png;base64,{encoded}" alt="{title}">'
 
 
 def build_light_html_report(

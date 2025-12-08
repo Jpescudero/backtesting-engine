@@ -16,7 +16,8 @@ class StrategyResult:
     """
     Contenedor sencillo para las señales generadas por la estrategia.
     """
-    signals: np.ndarray          # 1 = entrar largo, 0 = no hacer nada
+
+    signals: np.ndarray  # 1 = entrar largo, 0 = no hacer nada
     meta: Dict[str, Any]
 
 
@@ -25,6 +26,7 @@ class BarridaParams:
     """
     Parámetros de la estrategia de "barrida" en aperturas.
     """
+
     volume_percentile: float = 80.0
     use_two_bearish_bars: bool = True
 
@@ -39,8 +41,8 @@ class BarridaParams:
     post_open_minutes: int = 60
 
     # Filtro de pánico: cambio de precio mínimo aceptable en los últimos N minutos
-    panic_lookback: int = 60           # en barras (1m)
-    panic_threshold: float = -0.0075   # -0.75 %
+    panic_lookback: int = 60  # en barras (1m)
+    panic_threshold: float = -0.0075  # -0.75 %
 
     # Confirmación de reversal
     confirm_reversal: bool = True
@@ -165,13 +167,9 @@ class StrategyBarridaApertura:
         # 2) Umbral de volumen alto (percentil sobre barras de sesión)
         vol_in_session = v[session_mask]
         if vol_in_session.size > 0:
-            vol_threshold = float(
-                np.percentile(vol_in_session, params.volume_percentile)
-            )
+            vol_threshold = float(np.percentile(vol_in_session, params.volume_percentile))
         else:
-            vol_threshold = float(
-                np.percentile(v, params.volume_percentile)
-            )
+            vol_threshold = float(np.percentile(v, params.volume_percentile))
 
         vol_high = v >= vol_threshold
 
@@ -213,13 +211,7 @@ class StrategyBarridaApertura:
             strength_mask = strength >= required
 
         # 7) Señales finales: todas las condiciones a la vez
-        entries_mask = (
-            candidate
-            & session_mask
-            & not_panic
-            & confirm_mask
-            & strength_mask
-        )
+        entries_mask = candidate & session_mask & not_panic & confirm_mask & strength_mask
 
         signals = np.zeros(n, dtype=np.int8)
         signals[entries_mask] = 1  # long-only
@@ -238,9 +230,7 @@ class StrategyBarridaApertura:
             "pre_open_minutes": int(params.pre_open_minutes),
             "post_open_minutes": int(params.post_open_minutes),
             "atr_period": int(params.atr_period),
-            "min_reversal_strength_atr": float(
-                params.min_reversal_strength_atr
-            ),
+            "min_reversal_strength_atr": float(params.min_reversal_strength_atr),
         }
 
         return StrategyResult(signals=signals, meta=meta)

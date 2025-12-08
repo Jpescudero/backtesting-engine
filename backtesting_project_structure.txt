@@ -28,6 +28,17 @@ run_settings.example.txt
   #   - sweep_lookback=..., min_sweep_break_atr=..., etc. (parámetros opcionales)
   # Copia este archivo y pásalo a main.py con --config-file
 
+.pre-commit-config.yaml
+  # Hooks locales: Ruff (lint + format), Black, isort y fixes básicos de whitespace
+  # Ejecuta `pre-commit install` tras clonar para aplicarlos automáticamente
+
+.github/workflows/ci.yml
+  # Pipeline de CI (GitHub Actions): Ruff, Black, isort, mypy y pytest con cobertura
+  # Publica coverage.xml como artefacto y falla si la cobertura baja del 80 %
+
+pyproject.toml
+  # Configuración centralizada de Black, Ruff (isort), isort, mypy y coverage
+
 
 CÓDIGO FUENTE
 -------------

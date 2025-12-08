@@ -1,13 +1,8 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Tuple
 
-from src.config.paths import (
-    NPZ_DIR,
-    PARQUET_TICKS_DIR,
-    ensure_directories_exist,
-)
+from src.config.paths import NPZ_DIR, PARQUET_TICKS_DIR, ensure_directories_exist
 from src.data.bars1m_to_excel import generate_1m_bars_csv, get_default_output_csv
 from src.data.csv_1m_to_npz import csv_1m_to_npz
 from src.data.data_to_parquet import DEFAULT_SYMBOL, data_to_parquet
@@ -62,7 +57,7 @@ def ensure_npz_from_csv(symbol: str = DEFAULT_SYMBOL, timeframe: str = "1m") -> 
     return npz_path
 
 
-def prepare_npz_dataset(symbol: str, timeframe: str = "1m") -> Tuple[Path, Path]:
+def prepare_npz_dataset(symbol: str, timeframe: str = "1m") -> tuple[Path, Path]:
     """
     Devuelve los paths al CSV de 1m y al NPZ (creándolos si faltan).
     """
