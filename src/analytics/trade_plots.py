@@ -144,7 +144,29 @@ def _plot_single_trade(
     # SL / TP: primero intentamos leer columnas (por si en el futuro las añades)
     sl = _maybe_get_level(
         trade,
-        ["stop_loss", "sl_price", "sl", "stop_loss_price"],
+        [
+            "stop_loss_original",
+            "original_stop_loss",
+            "initial_stop_loss",
+            "initial_sl",
+            "sl_initial",
+            "stop_loss",
+            "sl_price",
+            "sl",
+            "stop_loss_price",
+        ],
+    )
+    breakeven = _maybe_get_level(
+        trade,
+        [
+            "break_even",
+            "break_even_price",
+            "breakeven",
+            "breakeven_price",
+            "be_price",
+            "breakeven_level",
+            "sl_to_be",
+        ],
     )
     tp = _maybe_get_level(
         trade,
@@ -182,6 +204,16 @@ def _plot_single_trade(
             linestyles="--",
             linewidth=1.2,
             label="SL",
+        )
+    if breakeven is not None:
+        ax.hlines(
+            breakeven,
+            xmin=xmin,
+            xmax=xmax,
+            colors="orange",
+            linestyles=":",
+            linewidth=1.2,
+            label="BE",
         )
     if tp is not None:
         ax.hlines(
