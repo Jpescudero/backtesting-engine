@@ -4,7 +4,8 @@ import json
 import logging
 from dataclasses import asdict, dataclass, field, is_dataclass
 from pathlib import Path
-from typing import Dict, Mapping, Optional, Sequence
+from typing import Any, Dict, Mapping, Optional, Sequence, Union, overload
+from typing import Literal
 
 import matplotlib
 import numpy as np
@@ -136,7 +137,7 @@ class BacktestRunConfig:
     resume_snapshot: Optional[Path] = None
     run_metadata_path: Optional[Path] = None
     replay_metadata: Optional[Path] = None
-    strategy_params: StrategyParams | SweepParams = field(default_factory=StrategyParams)
+    strategy_params: StrategyParamsType = field(default_factory=StrategyParams)
     backtest_config: BacktestConfig = field(
         default_factory=lambda: BacktestConfig(
             initial_cash=100_000.0,
@@ -271,16 +272,12 @@ def run_single_backtest(config: BacktestRunConfig) -> BacktestArtifacts:
 
         use_test_years = config.use_test_years or (test_years is not None and not train_years)
 
-        if use_test_years and not test_years:
-            raise ValueError("'use_test_years' está a True pero no se han definido test_years")
-
         if use_test_years:
-            assert test_years is not None
-            data = feed.load_years(test_years)
-            logger.info("Usando años de prueba: %s", test_years)
-        elif train_years:
-            data = feed.load_years(train_years)
-            logger.info("Usando años de entrenamiento: %s", train_years)
+            data = feed.load_years(_validated_years(config.test_years, label="test_years"))
+            logger.info("Usando años de prueba: %s", config.test_years)
+        elif config.train_years is not None:
+            data = feed.load_years(config.train_years)
+            logger.info("Usando años de entrenamiento: %s", config.train_years)
         else:
             data = feed.load_all()
 
@@ -288,19 +285,18 @@ def run_single_backtest(config: BacktestRunConfig) -> BacktestArtifacts:
         if atr_tf and atr_tf != config.timeframe:
             atr_feed = NPZOHLCVFeed(symbol=config.symbol, timeframe=atr_tf)
             if use_test_years:
-                assert test_years is not None
-                atr_data = atr_feed.load_years(test_years)
-            elif train_years:
-                atr_data = atr_feed.load_years(train_years)
+                atr_data = atr_feed.load_years(
+                    _validated_years(config.test_years, label="test_years")
+                )
+            elif config.train_years is not None:
+                atr_data = atr_feed.load_years(config.train_years)
             else:
                 atr_data = atr_feed.load_all()
 
     with timed_step(timings, "03_generar_senales_estrategia"):
         strategy: StrategyMicrostructureReversal | StrategyMicrostructureSweep
-        strategy_params: StrategyParams | SweepParams
         if config.strategy_name == "microstructure_reversal":
             assert isinstance(config.strategy_params, StrategyParams)
-            strategy_params = config.strategy_params
             strategy = StrategyMicrostructureReversal(
                 ema_short=strategy_params.ema_short,
                 ema_long=strategy_params.ema_long,
@@ -473,7 +469,7 @@ def load_run_config_from_metadata(path: Path | str) -> BacktestRunConfig:
 
     strategy_name = meta.get("strategy_name", "microstructure_reversal")
     strat_params_dict = meta.get("strategy_params", {}) or {}
-    strategy_params: StrategyParams | SweepParams
+    strategy_params: StrategyParamsType
     if strategy_name == "microstructure_sweep":
         strategy_params = SweepParams(**strat_params_dict)
     else:

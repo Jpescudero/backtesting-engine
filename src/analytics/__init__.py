@@ -1,1 +1,1 @@
-"""Analytics package marker to avoid duplicate module discovery during type checks."""
+# Package marker for analytics

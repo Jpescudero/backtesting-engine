@@ -16,6 +16,7 @@ from pathlib import Path
 from typing import Iterable, Sequence
 
 from src.engine.core import BacktestConfig
+from src.config.paths import REPORTS_DIR
 from src.pipeline.backtest_runner import (
     BacktestRunConfig,
     StrategyParams,
@@ -23,6 +24,7 @@ from src.pipeline.backtest_runner import (
     run_single_backtest,
 )
 from src.strategies.microstructure_sweep import SweepParams
+from src.visualization.trades_dashboard import build_trades_dashboard
 
 
 def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
@@ -759,6 +761,19 @@ def main(argv: Iterable[str] | None = None) -> None:
         print("\n=== Últimos trades ===")
         print(artifacts.trades_df.tail())
 
+    dashboard_path = None
+    if not artifacts.trades_df.empty:
+        reports_dir = run_config.reports_dir or (REPORTS_DIR / run_config.symbol)
+        reports_dir.mkdir(parents=True, exist_ok=True)
+        strategy_suffix = run_config.strategy_name.replace(" ", "_")
+        dashboard_path = reports_dir / f"trades_dashboard_{strategy_suffix}.html"
+        volatility_col = "volatility" if "volatility" in artifacts.trades_df.columns else None
+        build_trades_dashboard(
+            artifacts.trades_df,
+            dashboard_path,
+            volatility_col=volatility_col,
+        )
+
     if run_config.generate_report_files:
         print("\n=== Ficheros de resumen generados ===")
         print(f"Excel: {_describe_artifact(artifacts.reports.excel_path)}")
@@ -772,6 +787,8 @@ def main(argv: Iterable[str] | None = None) -> None:
         print(
             "Plot peores trades: " f"{_describe_artifact(artifacts.reports.worst_trade_plot_path)}"
         )
+    if dashboard_path:
+        print("Dashboard trades: " f"{_describe_artifact(dashboard_path)}")
 
     print_timings(artifacts.timings)
 

@@ -1,1 +1,1 @@
-"""Project package marker to ensure mypy resolves modules relative to ``src``."""
+# Package marker for src namespace
