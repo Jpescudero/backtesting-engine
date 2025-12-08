@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Dict, Any, Tuple
+from typing import Any, Dict, List, Mapping, Tuple
 
 import numpy as np
 from numba import njit
@@ -50,6 +50,130 @@ class BacktestResult:
     position: float                     # posición final
     trade_log: Dict[str, np.ndarray]    # arrays con info de los trades
     extra: Dict[str, Any]               # parámetros y metadatos
+    snapshots: List["BacktestSnapshot"] | None = None
+    state_log: "BacktestStateLog" | None = None
+
+
+@dataclass
+class BacktestStateLog:
+    cash: np.ndarray
+    position: np.ndarray
+    entry_price: np.ndarray
+    stop_price: np.ndarray
+    take_profit: np.ndarray
+    entry_bar_idx: np.ndarray
+    use_atr_stop: np.ndarray
+
+
+@dataclass
+class BacktestSnapshot:
+    index: int
+    ts: int
+    cash: float
+    position: float
+    entry_price: float
+    entry_bar_idx: int
+    stop_price: float
+    take_profit: float
+    use_atr_stop: bool
+
+    def to_dict(self) -> Dict[str, Any]:
+        open_orders: list[Dict[str, Any]] = []
+        if self.position > 0.0:
+            open_orders.append(
+                {
+                    "type": "long_position",
+                    "qty": self.position,
+                    "entry_price": self.entry_price,
+                    "entry_bar_idx": self.entry_bar_idx,
+                    "stop_price": self.stop_price,
+                    "take_profit": self.take_profit,
+                    "use_atr_stop": self.use_atr_stop,
+                }
+            )
+
+        return {
+            "index": self.index,
+            "ts": int(self.ts),
+            "cash": float(self.cash),
+            "position": float(self.position),
+            "entry_price": float(self.entry_price),
+            "entry_bar_idx": int(self.entry_bar_idx),
+            "stop_price": float(self.stop_price),
+            "take_profit": float(self.take_profit),
+            "use_atr_stop": bool(self.use_atr_stop),
+            "open_orders": open_orders,
+        }
+
+    @classmethod
+    def from_dict(cls, data: Mapping[str, Any]) -> "BacktestSnapshot":
+        return cls(
+            index=int(data.get("index", 0)),
+            ts=int(data.get("ts", 0)),
+            cash=float(data.get("cash", 0.0)),
+            position=float(data.get("position", 0.0)),
+            entry_price=float(data.get("entry_price", 0.0)),
+            entry_bar_idx=int(data.get("entry_bar_idx", -1)),
+            stop_price=float(data.get("stop_price", 0.0)),
+            take_profit=float(data.get("take_profit", 0.0)),
+            use_atr_stop=bool(data.get("use_atr_stop", False)),
+        )
+
+    def initial_state(self) -> Tuple[float, float, float, int, float, float, bool]:
+        return (
+            self.cash,
+            self.position,
+            self.entry_price,
+            self.entry_bar_idx,
+            self.stop_price,
+            self.take_profit,
+            self.use_atr_stop,
+        )
+
+
+def build_snapshots(
+    ts: np.ndarray, state_log: BacktestStateLog, snapshot_interval: int | None
+) -> List[BacktestSnapshot]:
+    if snapshot_interval is None or snapshot_interval <= 0:
+        return []
+
+    snapshots: List[BacktestSnapshot] = []
+    n = state_log.cash.shape[0]
+    indices = list(range(0, n, snapshot_interval))
+    if (n - 1) not in indices:
+        indices.append(n - 1)
+
+    for idx in indices:
+        if idx >= n:
+            continue
+        cash_val = state_log.cash[idx]
+        if not np.isfinite(cash_val):
+            continue
+        entry_price = state_log.entry_price[idx]
+        stop_price = state_log.stop_price[idx]
+        take_profit = state_log.take_profit[idx]
+        if not np.isfinite(entry_price):
+            entry_price = 0.0
+        if not np.isfinite(stop_price):
+            stop_price = 0.0
+        if not np.isfinite(take_profit):
+            take_profit = 0.0
+
+        snapshots.append(
+            BacktestSnapshot(
+                index=idx,
+                ts=int(ts[idx]) if idx < ts.shape[0] else 0,
+                cash=float(cash_val),
+                position=float(state_log.position[idx]),
+                entry_price=float(entry_price),
+                entry_bar_idx=int(state_log.entry_bar_idx[idx]),
+                stop_price=float(stop_price),
+                take_profit=float(take_profit),
+                use_atr_stop=bool(state_log.use_atr_stop[idx]),
+            )
+        )
+
+    return snapshots
 
 
 # =====================
@@ -281,6 +405,8 @@ def _backtest_with_risk(
     """
     n = c.shape[0]
     equity = np.empty(n, dtype=np.float64)
+    if start_index > 0:
+        equity[:start_index] = np.nan
 
     cash = initial_cash
     position = 0.0
@@ -566,6 +692,14 @@ def _backtest_with_risk_from_signals(
     atr_tp_mult: float,
     point_value: float,
     max_bars_in_trade: int,
+    start_index: int = 0,
+    initial_cash_state: float = 0.0,
+    initial_position_state: float = 0.0,
+    initial_entry_price: float = 0.0,
+    initial_entry_bar_idx: int = -1,
+    initial_stop_price: float = 0.0,
+    initial_tp_price: float = 0.0,
+    initial_use_atr_stop: bool = False,
 ) -> Tuple[
     np.ndarray,  # equity
     float,       # cash final
@@ -579,6 +713,13 @@ def _backtest_with_risk_from_signals(
     np.ndarray,  # trade_pnl
     np.ndarray,  # trade_holding_bars
     np.ndarray,  # trade_exit_reason
+    np.ndarray,  # cash_path
+    np.ndarray,  # position_path
+    np.ndarray,  # stop_price_path
+    np.ndarray,  # take_profit_path
+    np.ndarray,  # entry_bar_idx_path
+    np.ndarray,  # use_atr_stop_path
+    np.ndarray,  # entry_price_path
 ]:
     """
     Igual que _backtest_with_risk, pero usando un array de señales externo.
@@ -599,13 +740,13 @@ def _backtest_with_risk_from_signals(
     n = c.shape[0]
     equity = np.empty(n, dtype=np.float64)
 
-    cash = initial_cash
-    position = 0.0
-    entry_price = 0.0
-    entry_bar_idx = -1
-    stop_price = 0.0
-    tp_price = 0.0
-    use_atr_stops = False
+    cash = initial_cash if start_index == 0 else initial_cash_state
+    position = 0.0 if start_index == 0 else initial_position_state
+    entry_price = 0.0 if start_index == 0 else initial_entry_price
+    entry_bar_idx = -1 if start_index == 0 else initial_entry_bar_idx
+    stop_price = 0.0 if start_index == 0 else initial_stop_price
+    tp_price = 0.0 if start_index == 0 else initial_tp_price
+    use_atr_stops = False if start_index == 0 else initial_use_atr_stop
 
     # Prealocación para el log de trades
     max_trades = n // 2 + 1
@@ -621,7 +762,15 @@ def _backtest_with_risk_from_signals(
 
     trade_count = 0
 
-    for i in range(n):
+    state_cash = np.full(n, np.nan, dtype=np.float64)
+    state_position = np.full(n, np.nan, dtype=np.float64)
+    state_stop = np.full(n, np.nan, dtype=np.float64)
+    state_tp = np.full(n, np.nan, dtype=np.float64)
+    state_entry_idx = np.full(n, -1, dtype=np.int64)
+    state_entry_price = np.full(n, np.nan, dtype=np.float64)
+    state_use_atr = np.zeros(n, dtype=np.int8)
+
+    for i in range(start_index, n):
         price = c[i]
 
         # --- Defensa: si el precio no es finito, saltamos la barra ---
@@ -630,6 +779,13 @@ def _backtest_with_risk_from_signals(
                 equity[i] = initial_cash
             else:
                 equity[i] = equity[i - 1]
+            state_cash[i] = cash
+            state_position[i] = position
+            state_stop[i] = stop_price
+            state_tp[i] = tp_price
+            state_entry_idx[i] = entry_bar_idx
+            state_entry_price[i] = entry_price
+            state_use_atr[i] = 1 if use_atr_stops else 0
             continue
         # -------------------------------------------------------------
 
@@ -793,7 +949,15 @@ def _backtest_with_risk_from_signals(
                     use_atr_stops = False
 
         # 3) Mark-to-market de la equity
-        equity[i] = cash + position * price
+                equity[i] = cash + position * price
+
+        state_cash[i] = cash
+        state_position[i] = position
+        state_stop[i] = stop_price
+        state_tp[i] = tp_price
+        state_entry_idx[i] = entry_bar_idx
+        state_entry_price[i] = entry_price
+        state_use_atr[i] = 1 if use_atr_stops else 0
 
     return (
         equity,
@@ -808,6 +972,13 @@ def _backtest_with_risk_from_signals(
         trade_pnl,
         trade_holding_bars,
         trade_exit_reason,
+        state_cash,
+        state_position,
+        state_stop,
+        state_tp,
+        state_entry_idx,
+        state_use_atr,
+        state_entry_price,
     )
 
 
@@ -823,6 +994,8 @@ def run_backtest_with_signals(
     stop_losses: np.ndarray | None = None,
     take_profits: np.ndarray | None = None,
     config: BacktestConfig | None = None,
+    snapshot_interval: int | None = None,
+    resume_from: BacktestSnapshot | None = None,
 ) -> BacktestResult:
     """
     Ejecuta un backtest usando un array de señales externo (int8: -1, 0, +1).
@@ -871,6 +1044,12 @@ def run_backtest_with_signals(
         )
     take_profits = np.asarray(take_profits, dtype=np.float64)
 
+    start_index = 0
+    if resume_from is not None:
+        start_index = int(resume_from.index) + 1
+        if start_index >= data.c.shape[0]:
+            raise ValueError("El snapshot apunta al final del dataset; nada que reanudar")
+
     (
         equity,
         cash,
@@ -884,6 +1063,13 @@ def run_backtest_with_signals(
         trade_pnl,
         trade_holding_bars,
         trade_exit_reason,
+        state_cash,
+        state_position,
+        state_stop,
+        state_tp,
+        state_entry_idx,
+        state_use_atr,
+        state_entry_price,
     ) = _backtest_with_risk_from_signals(
         ts=data.ts,
         o=data.o,
@@ -909,7 +1095,26 @@ def run_backtest_with_signals(
         atr_tp_mult=config.atr_tp_mult,
         point_value=config.point_value,
         max_bars_in_trade=config.max_bars_in_trade,
+        start_index=start_index,
+        initial_cash_state=resume_from.cash if resume_from else 0.0,
+        initial_position_state=resume_from.position if resume_from else 0.0,
+        initial_entry_price=resume_from.entry_price if resume_from else 0.0,
+        initial_entry_bar_idx=resume_from.entry_bar_idx if resume_from else -1,
+        initial_stop_price=resume_from.stop_price if resume_from else 0.0,
+        initial_tp_price=resume_from.take_profit if resume_from else 0.0,
+        initial_use_atr_stop=resume_from.use_atr_stop if resume_from else False,
     )
+
+    state_log = BacktestStateLog(
+        cash=state_cash,
+        position=state_position,
+        entry_price=state_entry_price,
+        stop_price=state_stop,
+        take_profit=state_tp,
+        entry_bar_idx=state_entry_idx,
+        use_atr_stop=state_use_atr,
+    )
+    snapshots = build_snapshots(data.ts, state_log, snapshot_interval)
 
     trade_log: Dict[str, np.ndarray] = {}
     if trade_count > 0:
@@ -945,10 +1150,17 @@ def run_backtest_with_signals(
         "take_profits": take_profits,
     }
 
+    if snapshot_interval:
+        extra["snapshot_interval"] = snapshot_interval
+    if resume_from is not None:
+        extra["resumed_from_snapshot"] = resume_from.index
+
     return BacktestResult(
         equity=equity,
         cash=cash,
         position=position,
         trade_log=trade_log,
         extra=extra,
+        snapshots=snapshots,
+        state_log=state_log,
     )

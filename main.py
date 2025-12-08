@@ -19,6 +19,7 @@ from src.engine.core import BacktestConfig
 from src.pipeline.backtest_runner import (
     BacktestRunConfig,
     StrategyParams,
+    load_run_config_from_metadata,
     run_single_backtest,
 )
 from src.strategies.microstructure_sweep import SweepParams
@@ -79,6 +80,16 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--rr-multiple", type=float, default=SweepParams.rr_multiple, help="Multiplicador RR para TP")
     parser.add_argument("--config-file", type=str, default=None,
                         help="Ruta a archivo de configuración simple key=value")
+    parser.add_argument("--seed", type=int, default=None, help="Seed global para reproducibilidad")
+    parser.add_argument("--snapshot-interval", type=int, default=None,
+                        help="Guardar snapshots de estado cada N eventos")
+    parser.add_argument("--snapshot-path", type=str, default=None, help="Ruta personalizada para snapshots")
+    parser.add_argument("--resume-snapshot", type=str, default=None,
+                        help="Ruta a snapshot desde el que reanudar el backtest")
+    parser.add_argument("--run-metadata", type=str, default=None,
+                        help="Ruta donde escribir los metadatos completos del run")
+    parser.add_argument("--replay-metadata", type=str, default=None,
+                        help="Ruta a metadatos previos para reproducir la ejecución")
     parser.add_argument("--initial-cash", type=float, default=None,
                         help="Capital inicial; si no se indica se toma del config o 100k")
     parser.add_argument("--commission", type=float, default=1.0)
@@ -302,16 +313,32 @@ def main(argv: Iterable[str] | None = None) -> None:
 
     config_file_values = _load_config_file(_resolve_config_file(args.config_file))
 
+    meta_config: BacktestRunConfig | None = None
+    if args.replay_metadata:
+        meta_config = load_run_config_from_metadata(args.replay_metadata)
+
     symbol = _get_setting(args.symbol, config_file_values, "symbol", "NDXm")
     timeframe = _get_setting(args.timeframe, config_file_values, "timeframe", "1m")
     strategy_name = _get_setting(args.strategy, config_file_values, "strategy", "microstructure_reversal")
+
+    if meta_config:
+        symbol = meta_config.symbol
+        timeframe = meta_config.timeframe
+        strategy_name = meta_config.strategy_name
 
     initial_cash = _get_setting(args.initial_cash, config_file_values, "initial_cash", 100_000.0, float)
     train_years = _get_setting(_parse_years(args.train_years), config_file_values, "train_years", None, _parse_years)
     test_years = _get_setting(_parse_years(args.test_years), config_file_values, "test_years", None, _parse_years)
     use_test_years = _get_setting(args.use_test_years, config_file_values, "use_test_years", False, lambda v: str(v).lower() == "true")
 
-    if strategy_name == "microstructure_sweep":
+    if meta_config:
+        train_years = meta_config.train_years
+        test_years = meta_config.test_years
+        use_test_years = meta_config.use_test_years
+
+    if meta_config:
+        strategy_params = meta_config.strategy_params
+    elif strategy_name == "microstructure_sweep":
         sweep_defaults = SweepParams()
         strategy_params = SweepParams(
             ema_short=_get_setting(args.ema_short, config_file_values, "ema_short", sweep_defaults.ema_short, int),
@@ -429,16 +456,34 @@ def main(argv: Iterable[str] | None = None) -> None:
             structure_break_lookback=args.structure_break_lookback,
         )
 
-    backtest_config = BacktestConfig(
-        initial_cash=initial_cash,
-        commission_per_trade=args.commission,
-        trade_size=args.trade_size,
-        slippage=args.slippage,
-        sl_pct=args.sl_pct,
-        tp_pct=args.tp_pct,
-        max_bars_in_trade=args.max_bars,
-        entry_threshold=args.entry_threshold,
+    if meta_config:
+        backtest_config = meta_config.backtest_config
+    else:
+        backtest_config = BacktestConfig(
+            initial_cash=initial_cash,
+            commission_per_trade=args.commission,
+            trade_size=args.trade_size,
+            slippage=args.slippage,
+            sl_pct=args.sl_pct,
+            tp_pct=args.tp_pct,
+            max_bars_in_trade=args.max_bars,
+            entry_threshold=args.entry_threshold,
+        )
+
+    seed_value = args.seed if args.seed is not None else (meta_config.seed if meta_config else None)
+    snapshot_interval = (
+        args.snapshot_interval
+        if args.snapshot_interval is not None
+        else (meta_config.snapshot_interval if meta_config else None)
     )
+    snapshot_path = Path(args.snapshot_path) if args.snapshot_path else (
+        meta_config.snapshot_path if meta_config else None
+    )
+    resume_snapshot = Path(args.resume_snapshot) if args.resume_snapshot else (
+        meta_config.resume_snapshot if meta_config else None
+    )
+    run_metadata_path = Path(args.run_metadata) if args.run_metadata else None
+    replay_metadata_path = Path(args.replay_metadata) if args.replay_metadata else None
 
     run_config = BacktestRunConfig(
         symbol=symbol,
@@ -451,6 +496,12 @@ def main(argv: Iterable[str] | None = None) -> None:
         train_years=train_years,
         test_years=test_years,
         use_test_years=use_test_years,
+        seed=seed_value,
+        snapshot_interval=snapshot_interval,
+        snapshot_path=snapshot_path,
+        resume_snapshot=resume_snapshot,
+        run_metadata_path=run_metadata_path,
+        replay_metadata=replay_metadata_path,
         strategy_params=strategy_params,
         backtest_config=backtest_config,
     )
