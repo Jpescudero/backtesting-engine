@@ -7,9 +7,45 @@ from typing import Any, Dict, Optional
 
 import numpy as np
 import pandas as pd
+from numba import njit
+from numpy.lib.stride_tricks import sliding_window_view
 
 from src.data.feeds import OHLCVArrays
 from src.strategies.base import StrategyResult
+
+
+@njit(cache=True)
+def _atr_numba(h: np.ndarray, low: np.ndarray, c: np.ndarray, period: int) -> np.ndarray:
+    """EWMA ATR optimized with Numba (Wilder-style smoothing).
+
+    The output mirrors ``min_periods=period`` semantics by emitting NaN
+    values until enough bars are available.
+    """
+
+    n = c.shape[0]
+    atr = np.full(n, np.nan, dtype=np.float64)
+    if n == 0:
+        return atr
+    if period <= 1:
+        return np.abs(h - low)
+
+    tr = np.empty(n, dtype=np.float64)
+    tr[0] = h[0] - low[0]
+    for i in range(1, n):
+        close_prev = c[i - 1]
+        high_low = h[i] - low[i]
+        high_close_prev = abs(h[i] - close_prev)
+        low_close_prev = abs(low[i] - close_prev)
+        tr[i] = max(high_low, high_close_prev, low_close_prev)
+
+    alpha = 2.0 / (period + 1)
+    atr_val = tr[0]
+    for i in range(1, n):
+        atr_val = alpha * tr[i] + (1 - alpha) * atr_val
+        if i >= period - 1:
+            atr[i] = atr_val
+
+    return atr
 
 
 @dataclass
@@ -80,31 +116,13 @@ class StrategyMicrostructureReversal:
 
     @staticmethod
     def _atr(h: np.ndarray, low: np.ndarray, c: np.ndarray, period: int) -> np.ndarray:
-        n = len(c)
-        if n == 0:
-            return np.zeros(0, dtype=float)
-
-        tr = np.empty(n, dtype=float)
-        tr[0] = h[0] - low[0]
-        for i in range(1, n):
-            high_low = h[i] - low[i]
-            high_close_prev = abs(h[i] - c[i - 1])
-            low_close_prev = abs(low[i] - c[i - 1])
-            tr[i] = max(high_low, high_close_prev, low_close_prev)
-
-        atr = np.full(n, np.nan, dtype=float)
         if period <= 0:
-            return atr
+            return np.full_like(c, np.nan, dtype=float)
 
-        alpha = 2.0 / (period + 1)
-        for i in range(period - 1, n):
-            window_tr = tr[i - period + 1 : i + 1]
-            ema = window_tr[0]
-            for val in window_tr[1:]:
-                ema = alpha * val + (1 - alpha) * ema
-            atr[i] = ema
-
-        return atr
+        h_arr = np.asarray(h, dtype=np.float64)
+        low_arr = np.asarray(low, dtype=np.float64)
+        c_arr = np.asarray(c, dtype=np.float64)
+        return _atr_numba(h_arr, low_arr, c_arr, period)
 
     @staticmethod
     def _align_indicator_to_target_ts(
@@ -129,19 +147,44 @@ class StrategyMicrostructureReversal:
 
     @staticmethod
     def _rolling_max(arr: np.ndarray, window: int) -> np.ndarray:
-        return pd.Series(arr).rolling(window, min_periods=1).max().to_numpy()
+        arr = np.asarray(arr, dtype=float)
+        n = arr.shape[0]
+        if n == 0:
+            return np.zeros(0, dtype=float)
+
+        window = int(max(1, min(window, n)))
+        out = np.empty(n, dtype=float)
+
+        # prefix with expanding window (min_periods=1 behaviour)
+        out[: window - 1] = np.maximum.accumulate(arr[: window - 1]) if window > 1 else arr[:0]
+
+        view = sliding_window_view(arr, window)
+        out[window - 1 :] = view.max(axis=1)
+        return out
 
     @staticmethod
     def _rolling_min(arr: np.ndarray, window: int) -> np.ndarray:
-        return pd.Series(arr).rolling(window, min_periods=1).min().to_numpy()
+        arr = np.asarray(arr, dtype=float)
+        n = arr.shape[0]
+        if n == 0:
+            return np.zeros(0, dtype=float)
+
+        window = int(max(1, min(window, n)))
+        out = np.empty(n, dtype=float)
+
+        out[: window - 1] = np.minimum.accumulate(arr[: window - 1]) if window > 1 else arr[:0]
+
+        view = sliding_window_view(arr, window)
+        out[window - 1 :] = view.min(axis=1)
+        return out
 
     @staticmethod
     def _forward_rolling_max(arr: np.ndarray, window: int) -> np.ndarray:
-        return pd.Series(arr[::-1]).rolling(window, min_periods=1).max().to_numpy()[::-1]
+        return StrategyMicrostructureReversal._rolling_max(arr[::-1], window)[::-1]
 
     @staticmethod
     def _forward_rolling_min(arr: np.ndarray, window: int) -> np.ndarray:
-        return pd.Series(arr[::-1]).rolling(window, min_periods=1).min().to_numpy()[::-1]
+        return StrategyMicrostructureReversal._rolling_min(arr[::-1], window)[::-1]
 
     def compute_lower_timeframe_atr(
         self, lower_data: OHLCVArrays, target_ts: np.ndarray
@@ -257,13 +300,13 @@ class StrategyMicrostructureReversal:
         shift_long = (body_signed > 0) & (body >= p.shift_body_atr * atr)
         shift_short = (body_signed < 0) & (body >= p.shift_body_atr * atr)
 
-        prev_max_high = pd.Series(h).rolling(p.structure_break_lookback, min_periods=1).max().shift(1)
-        prev_min_low = pd.Series(low).rolling(p.structure_break_lookback, min_periods=1).min().shift(1)
-        prev_max_high.iloc[0] = h[0]
-        prev_min_low.iloc[0] = low[0]
+        prev_max_high = np.roll(self._rolling_max(h, p.structure_break_lookback), 1)
+        prev_min_low = np.roll(self._rolling_min(low, p.structure_break_lookback), 1)
+        prev_max_high[0] = h[0]
+        prev_min_low[0] = low[0]
 
-        structure_break_long = c > prev_max_high.to_numpy()
-        structure_break_short = c < prev_min_low.to_numpy()
+        structure_break_long = c > prev_max_high
+        structure_break_short = c < prev_min_low
 
         shift_long &= structure_break_long & uptrend_mask
         shift_short &= structure_break_short & downtrend_mask
