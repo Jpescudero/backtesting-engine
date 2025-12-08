@@ -2,9 +2,10 @@ from __future__ import annotations
 
 import json
 import logging
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass, field, is_dataclass
 from pathlib import Path
-from typing import Dict, Mapping, Optional
+from typing import Any, Dict, Mapping, Optional, Sequence, Union, overload
+from typing import Literal
 
 import matplotlib
 import numpy as np
@@ -58,11 +59,18 @@ def _save_snapshots(path: Path, snapshots) -> None:
 def _build_run_metadata(
     *, config: BacktestRunConfig, seeds: Mapping[str, object], snapshot_path: Path | None
 ) -> Dict[str, object]:
+    strategy_params = config.strategy_params
+    strategy_params_dict = (
+        asdict(strategy_params)
+        if is_dataclass(strategy_params) and not isinstance(strategy_params, type)
+        else _params_mapping(strategy_params)
+    )
+
     return {
         "symbol": config.symbol,
         "timeframe": config.timeframe,
         "strategy_name": config.strategy_name,
-        "strategy_params": asdict(config.strategy_params),
+        "strategy_params": strategy_params_dict,
         "backtest_config": asdict(config.backtest_config),
         "train_years": config.train_years,
         "test_years": config.test_years,
@@ -107,6 +115,9 @@ class StrategyParams:
     structure_break_lookback: int = 3
 
 
+StrategyParamsType = Union[StrategyParams, SweepParams]
+
+
 @dataclass
 class BacktestRunConfig:
     symbol: str = "NDXm"
@@ -126,7 +137,7 @@ class BacktestRunConfig:
     resume_snapshot: Optional[Path] = None
     run_metadata_path: Optional[Path] = None
     replay_metadata: Optional[Path] = None
-    strategy_params: object = field(default_factory=StrategyParams)
+    strategy_params: StrategyParamsType = field(default_factory=StrategyParams)
     backtest_config: BacktestConfig = field(
         default_factory=lambda: BacktestConfig(
             initial_cash=100_000.0,
@@ -157,6 +168,63 @@ class BacktestArtifacts:
     reports: BacktestReports
 
 
+def _params_mapping(params: object) -> Dict[str, Any]:
+    if is_dataclass(params) and not isinstance(params, type):
+        return {k: v for k, v in asdict(params).items()}
+    if isinstance(params, Mapping):
+        return {str(k): v for k, v in params.items()}
+    return {
+        key: getattr(params, key)
+        for key in dir(params)
+        if not key.startswith("_") and not callable(getattr(params, key))
+    }
+
+
+@overload
+def _coerce_strategy_params(
+    params: StrategyParamsType | Mapping[str, object],
+    *,
+    strategy_name: Literal["microstructure_sweep"],
+) -> SweepParams:
+    ...
+
+
+@overload
+def _coerce_strategy_params(
+    params: StrategyParamsType | Mapping[str, object],
+    *,
+    strategy_name: Literal["microstructure_reversal"],
+) -> StrategyParams:
+    ...
+
+
+@overload
+def _coerce_strategy_params(
+    params: StrategyParamsType | Mapping[str, object], *, strategy_name: str
+) -> StrategyParamsType:
+    ...
+
+
+def _coerce_strategy_params(
+    params: StrategyParamsType | Mapping[str, object], *, strategy_name: str
+) -> StrategyParamsType:
+    params_dict: Dict[str, Any] = _params_mapping(params)
+    if strategy_name == "microstructure_sweep":
+        if isinstance(params, SweepParams):
+            return params
+        return SweepParams(**params_dict)
+
+    if isinstance(params, StrategyParams):
+        return params
+    return StrategyParams(**params_dict)
+
+
+def _validated_years(years: Optional[Sequence[int]], *, label: str) -> Sequence[int]:
+    if years is None:
+        raise ValueError(f"'{label}' está a None pero se esperaba una lista de años")
+    return years
+
+
 def _configure_matplotlib(headless: bool) -> None:
     if headless:
         matplotlib.use("Agg")
@@ -165,6 +233,10 @@ def _configure_matplotlib(headless: bool) -> None:
 def run_single_backtest(config: BacktestRunConfig) -> BacktestArtifacts:
     _configure_matplotlib(config.headless)
 
+    config.strategy_params = _coerce_strategy_params(
+        config.strategy_params, strategy_name=config.strategy_name
+    )
+    strategy_params = config.strategy_params
     seeds = seed_everything(config.seed)
 
     resume_snapshot: BacktestSnapshot | None = None
@@ -200,69 +272,70 @@ def run_single_backtest(config: BacktestRunConfig) -> BacktestArtifacts:
             config.test_years is not None and not config.train_years
         )
 
-        if use_test_years and not config.test_years:
-            raise ValueError("'use_test_years' está a True pero no se han definido test_years")
-
         if use_test_years:
-            data = feed.load_years(config.test_years)
+            data = feed.load_years(_validated_years(config.test_years, label="test_years"))
             logger.info("Usando años de prueba: %s", config.test_years)
-        elif config.train_years:
+        elif config.train_years is not None:
             data = feed.load_years(config.train_years)
             logger.info("Usando años de entrenamiento: %s", config.train_years)
         else:
             data = feed.load_all()
 
-        atr_tf = getattr(config.strategy_params, "atr_timeframe", None)
+        atr_tf = getattr(strategy_params, "atr_timeframe", None)
         if atr_tf and atr_tf != config.timeframe:
             atr_feed = NPZOHLCVFeed(symbol=config.symbol, timeframe=atr_tf)
             if use_test_years:
-                atr_data = atr_feed.load_years(config.test_years)
-            elif config.train_years:
+                atr_data = atr_feed.load_years(
+                    _validated_years(config.test_years, label="test_years")
+                )
+            elif config.train_years is not None:
                 atr_data = atr_feed.load_years(config.train_years)
             else:
                 atr_data = atr_feed.load_all()
 
     with timed_step(timings, "03_generar_senales_estrategia"):
+        strategy: StrategyMicrostructureReversal | StrategyMicrostructureSweep
         if config.strategy_name == "microstructure_reversal":
+            assert isinstance(strategy_params, StrategyParams)
             strategy = StrategyMicrostructureReversal(
-                ema_short=config.strategy_params.ema_short,
-                ema_long=config.strategy_params.ema_long,
-                atr_period=config.strategy_params.atr_period,
-                atr_timeframe=config.strategy_params.atr_timeframe,
-                atr_timeframe_period=config.strategy_params.atr_timeframe_period,
-                min_pullback_atr=config.strategy_params.min_pullback_atr,
-                max_pullback_atr=config.strategy_params.max_pullback_atr,
-                max_pullback_bars=config.strategy_params.max_pullback_bars,
-                exhaustion_close_min=config.strategy_params.exhaustion_close_min,
-                exhaustion_close_max=config.strategy_params.exhaustion_close_max,
-                exhaustion_body_max_ratio=config.strategy_params.exhaustion_body_max_ratio,
-                shift_body_atr=config.strategy_params.shift_body_atr,
-                structure_break_lookback=config.strategy_params.structure_break_lookback,
+                ema_short=strategy_params.ema_short,
+                ema_long=strategy_params.ema_long,
+                atr_period=strategy_params.atr_period,
+                atr_timeframe=strategy_params.atr_timeframe,
+                atr_timeframe_period=strategy_params.atr_timeframe_period,
+                min_pullback_atr=strategy_params.min_pullback_atr,
+                max_pullback_atr=strategy_params.max_pullback_atr,
+                max_pullback_bars=strategy_params.max_pullback_bars,
+                exhaustion_close_min=strategy_params.exhaustion_close_min,
+                exhaustion_close_max=strategy_params.exhaustion_close_max,
+                exhaustion_body_max_ratio=strategy_params.exhaustion_body_max_ratio,
+                shift_body_atr=strategy_params.shift_body_atr,
+                structure_break_lookback=strategy_params.structure_break_lookback,
             )
         else:
-            assert isinstance(config.strategy_params, SweepParams)
+            assert isinstance(strategy_params, SweepParams)
             strategy = StrategyMicrostructureSweep(
-                ema_short=config.strategy_params.ema_short,
-                ema_long=config.strategy_params.ema_long,
-                atr_period=config.strategy_params.atr_period,
-                atr_timeframe=config.strategy_params.atr_timeframe,
-                atr_timeframe_period=config.strategy_params.atr_timeframe_period,
-                sweep_lookback=config.strategy_params.sweep_lookback,
-                min_sweep_break_atr=config.strategy_params.min_sweep_break_atr,
-                min_lower_wick_body_ratio=config.strategy_params.min_lower_wick_body_ratio,
-                min_sweep_range_atr=config.strategy_params.min_sweep_range_atr,
-                confirm_body_atr=config.strategy_params.confirm_body_atr,
-                confirm_close_above_mid=config.strategy_params.confirm_close_above_mid,
-                volume_period=config.strategy_params.volume_period,
-                min_rvol=config.strategy_params.min_rvol,
-                vol_percentile_min=config.strategy_params.vol_percentile_min,
-                vol_percentile_max=config.strategy_params.vol_percentile_max,
-                use_trend_filter=config.strategy_params.use_trend_filter,
-                max_atr_mult_intraday=config.strategy_params.max_atr_mult_intraday,
-                max_trades_per_day=config.strategy_params.max_trades_per_day,
-                max_holding_bars=config.strategy_params.max_holding_bars,
-                atr_stop_mult=config.strategy_params.atr_stop_mult,
-                rr_multiple=config.strategy_params.rr_multiple,
+                ema_short=strategy_params.ema_short,
+                ema_long=strategy_params.ema_long,
+                atr_period=strategy_params.atr_period,
+                atr_timeframe=strategy_params.atr_timeframe,
+                atr_timeframe_period=strategy_params.atr_timeframe_period,
+                sweep_lookback=strategy_params.sweep_lookback,
+                min_sweep_break_atr=strategy_params.min_sweep_break_atr,
+                min_lower_wick_body_ratio=strategy_params.min_lower_wick_body_ratio,
+                min_sweep_range_atr=strategy_params.min_sweep_range_atr,
+                confirm_body_atr=strategy_params.confirm_body_atr,
+                confirm_close_above_mid=strategy_params.confirm_close_above_mid,
+                volume_period=strategy_params.volume_period,
+                min_rvol=strategy_params.min_rvol,
+                vol_percentile_min=strategy_params.vol_percentile_min,
+                vol_percentile_max=strategy_params.vol_percentile_max,
+                use_trend_filter=strategy_params.use_trend_filter,
+                max_atr_mult_intraday=strategy_params.max_atr_mult_intraday,
+                max_trades_per_day=strategy_params.max_trades_per_day,
+                max_holding_bars=strategy_params.max_holding_bars,
+                atr_stop_mult=strategy_params.atr_stop_mult,
+                rr_multiple=strategy_params.rr_multiple,
             )
 
         atr_override = None
@@ -395,6 +468,7 @@ def load_run_config_from_metadata(path: Path | str) -> BacktestRunConfig:
 
     strategy_name = meta.get("strategy_name", "microstructure_reversal")
     strat_params_dict = meta.get("strategy_params", {}) or {}
+    strategy_params: StrategyParamsType
     if strategy_name == "microstructure_sweep":
         strategy_params = SweepParams(**strat_params_dict)
     else:
