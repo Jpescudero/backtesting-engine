@@ -35,6 +35,10 @@ SRC_DIR = PROJECT_ROOT / "src"
 DATA_DIR = PROJECT_ROOT / "data"
 NOTEBOOKS_DIR = PROJECT_ROOT / "notebooks"
 REPORTS_DIR = PROJECT_ROOT / "reports"
+MODELS_DIR = PROJECT_ROOT / "models"
+
+# Carpeta para scripts y experimentos de research
+RESEARCH_DIR = PROJECT_ROOT / "research"
 
 # Subcarpetas de código dentro de src/
 CONFIG_DIR = SRC_DIR / "config"
@@ -80,6 +84,8 @@ def ensure_directories_exist() -> None:
         OTHER_DATA_DIR,
         NOTEBOOKS_DIR,
         REPORTS_DIR,
+        MODELS_DIR,
+        RESEARCH_DIR,
     ]
 
     for d in dirs_to_create:
