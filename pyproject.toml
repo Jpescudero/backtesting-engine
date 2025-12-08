@@ -1,0 +1,50 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "backtesting-engine"
+version = "0.1.0"
+description = "Herramientas para backtesting de estrategias"
+requires-python = ">=3.11"
+
+[tool.black]
+line-length = 120
+target-version = ["py311"]
+
+[tool.isort]
+profile = "black"
+line_length = 120
+force_alphabetical_sort_within_sections = true
+src_paths = ["src", "tests"]
+skip = ["notebooks"]
+
+[tool.ruff]
+line-length = 120
+target-version = "py311"
+respect-gitignore = true
+fix = false
+extend-exclude = ["notebooks", "*.ipynb"]
+
+[tool.ruff.lint]
+select = ["E", "F"]
+ignore = ["E501"]
+
+[tool.mypy]
+python_version = "3.11"
+ignore_missing_imports = true
+warn_unused_configs = true
+strict_optional = false
+allow_redefinition = true
+explicit_package_bases = true
+files = ["src/utils", "tests"]
+plugins = []
+
+[tool.coverage.run]
+branch = true
+source = ["src"]
+omit = ["tests/*"]
+
+[tool.coverage.report]
+show_missing = true
+fail_under = 80

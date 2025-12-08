@@ -5,8 +5,8 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 
-from src.engine.core import BacktestResult
 from src.data.feeds import OHLCVArrays
+from src.engine.core import BacktestResult
 
 
 def equity_to_series(
@@ -32,9 +32,17 @@ def trades_to_dataframe(
         # Sin trades
         return pd.DataFrame(
             columns=[
-                "entry_time", "exit_time", "entry_idx", "exit_idx",
-                "entry_price", "exit_price", "qty", "pnl",
-                "holding_bars", "exit_reason_code", "exit_reason"
+                "entry_time",
+                "exit_time",
+                "entry_idx",
+                "exit_idx",
+                "entry_price",
+                "exit_price",
+                "qty",
+                "pnl",
+                "holding_bars",
+                "exit_reason_code",
+                "exit_reason",
             ]
         )
 
@@ -46,18 +54,20 @@ def trades_to_dataframe(
     entry_time = ts[entry_idx]
     exit_time = ts[exit_idx]
 
-    df = pd.DataFrame({
-        "entry_time": entry_time,
-        "exit_time": exit_time,
-        "entry_idx": entry_idx,
-        "exit_idx": exit_idx,
-        "entry_price": log["entry_price"],
-        "exit_price": log["exit_price"],
-        "qty": log["qty"],
-        "pnl": log["pnl"],
-        "holding_bars": log["holding_bars"],
-        "exit_reason_code": log["exit_reason"],
-    })
+    df = pd.DataFrame(
+        {
+            "entry_time": entry_time,
+            "exit_time": exit_time,
+            "entry_idx": entry_idx,
+            "exit_idx": exit_idx,
+            "entry_price": log["entry_price"],
+            "exit_price": log["exit_price"],
+            "qty": log["qty"],
+            "pnl": log["pnl"],
+            "holding_bars": log["holding_bars"],
+            "exit_reason_code": log["exit_reason"],
+        }
+    )
 
     stop_losses = result.extra.get("stop_losses") if result.extra else None
     take_profits = result.extra.get("take_profits") if result.extra else None
@@ -77,14 +87,14 @@ def trades_to_dataframe(
     # Si no hay SL/TP explícitos, derivamos los niveles desde el % configurado
     side = np.sign(df["qty"]).replace(0, 1.0)
     if df["stop_loss"].isna().any() and np.isfinite(sl_pct):
-        df.loc[df["stop_loss"].isna(), "stop_loss"] = df.loc[
-            df["stop_loss"].isna(), "entry_price"
-        ] * (1.0 - sl_pct * side[df["stop_loss"].isna()])
+        df.loc[df["stop_loss"].isna(), "stop_loss"] = df.loc[df["stop_loss"].isna(), "entry_price"] * (
+            1.0 - sl_pct * side[df["stop_loss"].isna()]
+        )
 
     if df["take_profit"].isna().any() and np.isfinite(tp_pct):
-        df.loc[df["take_profit"].isna(), "take_profit"] = df.loc[
-            df["take_profit"].isna(), "entry_price"
-        ] * (1.0 + tp_pct * side[df["take_profit"].isna()])
+        df.loc[df["take_profit"].isna(), "take_profit"] = df.loc[df["take_profit"].isna(), "entry_price"] * (
+            1.0 + tp_pct * side[df["take_profit"].isna()]
+        )
 
     df["sl_pct"] = sl_pct
     df["tp_pct"] = tp_pct

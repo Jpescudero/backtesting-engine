@@ -95,11 +95,7 @@ class StrategyMicrostructureSweep:
         source_index = pd.to_datetime(source_ts, utc=True)
         target_index = pd.to_datetime(target_ts, utc=True)
 
-        aligned = (
-            pd.Series(indicator, index=source_index)
-            .reindex(target_index, method="ffill")
-            .to_numpy()
-        )
+        aligned = pd.Series(indicator, index=source_index).reindex(target_index, method="ffill").to_numpy()
         return aligned
 
     @staticmethod
@@ -118,9 +114,7 @@ class StrategyMicrostructureSweep:
     def _forward_rolling_min(arr: np.ndarray, window: int) -> np.ndarray:
         return pd.Series(arr[::-1]).rolling(window, min_periods=1).min().to_numpy()[::-1]
 
-    def compute_lower_timeframe_atr(
-        self, lower_data: OHLCVArrays, target_ts: np.ndarray
-    ) -> np.ndarray:
+    def compute_lower_timeframe_atr(self, lower_data: OHLCVArrays, target_ts: np.ndarray) -> np.ndarray:
         atr_lower = self._atr(
             h=np.asarray(lower_data.h),
             low=np.asarray(lower_data.low),
@@ -128,13 +122,9 @@ class StrategyMicrostructureSweep:
             period=self.params.atr_timeframe_period,
         )
 
-        return self._align_indicator_to_target_ts(
-            indicator=atr_lower, source_ts=lower_data.ts, target_ts=target_ts
-        )
+        return self._align_indicator_to_target_ts(indicator=atr_lower, source_ts=lower_data.ts, target_ts=target_ts)
 
-    def generate_signals(
-        self, data: OHLCVArrays, external_atr: Optional[np.ndarray] = None
-    ) -> StrategyResult:
+    def generate_signals(self, data: OHLCVArrays, external_atr: Optional[np.ndarray] = None) -> StrategyResult:
         o = np.asarray(data.o)
         h = np.asarray(data.h)
         low = np.asarray(data.low)
@@ -150,9 +140,8 @@ class StrategyMicrostructureSweep:
 
         idx_local = pd.to_datetime(ts, utc=True).tz_convert("Europe/Madrid")
         minutes_in_day = idx_local.hour * 60 + idx_local.minute
-        session_mask = (
-            ((minutes_in_day >= 8 * 60 + 50) & (minutes_in_day <= 10 * 60))
-            | ((minutes_in_day >= 15 * 60 + 20) & (minutes_in_day <= 16 * 60 + 30))
+        session_mask = ((minutes_in_day >= 8 * 60 + 50) & (minutes_in_day <= 10 * 60)) | (
+            (minutes_in_day >= 15 * 60 + 20) & (minutes_in_day <= 16 * 60 + 30)
         )
         day_index = idx_local.normalize()
 
@@ -166,9 +155,7 @@ class StrategyMicrostructureSweep:
 
         if external_atr is not None:
             if external_atr.shape[0] != n:
-                raise ValueError(
-                    "external_atr debe tener la misma longitud que los datos del timeframe objetivo"
-                )
+                raise ValueError("external_atr debe tener la misma longitud que los datos del timeframe objetivo")
             atr = external_atr
             atr_source = "external"
         else:

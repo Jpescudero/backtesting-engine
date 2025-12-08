@@ -8,7 +8,7 @@ from typing import List, Optional, Sequence, Tuple
 
 import numpy as np
 
-from src.config.paths import NPZ_DIR, ensure_directories_exist
+from src.config.paths import ensure_directories_exist, NPZ_DIR
 
 
 @dataclass
@@ -18,6 +18,7 @@ class OHLCVArrays:
 
     Estos arrays son 1D y NumPy contiguos, ideales para Numba.
     """
+
     ts: np.ndarray
     o: np.ndarray
     h: np.ndarray
@@ -179,9 +180,7 @@ class NPZOHLCVFeed:
         all_data = self.load_all()
         return filter_ohlcv_by_years(all_data, years)
 
-    def load_train_test(
-        self, train_years: Sequence[int], test_years: Sequence[int]
-    ) -> Tuple[OHLCVArrays, OHLCVArrays]:
+    def load_train_test(self, train_years: Sequence[int], test_years: Sequence[int]) -> Tuple[OHLCVArrays, OHLCVArrays]:
         """
         Devuelve una tupla (train, test) filtrada por años.
         """

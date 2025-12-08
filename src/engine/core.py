@@ -3,41 +3,42 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Dict, Any, Tuple
+from typing import Any, Dict, Tuple
 
 import numpy as np
 from numba import njit
 
 from src.data.feeds import OHLCVArrays
 
-
 # =====================
 # Configuración & Resultados
 # =====================
+
 
 @dataclass
 class BacktestConfig:
     """
     Configuración básica del backtest.
     """
+
     initial_cash: float = 100_000.0
-    commission_per_trade: float = 1.0   # comisión fija por operación (entrada o salida)
-    trade_size: float = 1.0             # contratos/unidades por operación
-    min_trade_size: float = 0.01        # tamaño mínimo permitido por contrato/lote
-    max_trade_size: float = 1000.0      # límite superior para el tamaño por operación
-    slippage: float = 0.0               # slippage en puntos
+    commission_per_trade: float = 1.0  # comisión fija por operación (entrada o salida)
+    trade_size: float = 1.0  # contratos/unidades por operación
+    min_trade_size: float = 0.01  # tamaño mínimo permitido por contrato/lote
+    max_trade_size: float = 1000.0  # límite superior para el tamaño por operación
+    slippage: float = 0.0  # slippage en puntos
 
     # Gestión de riesgo
-    sl_pct: float = 0.01                # stop loss a -1%
-    tp_pct: float = 0.02                # take profit a +2%
-    risk_per_trade_pct: float = 0.0     # riesgo fijo por trade (0.0025 => 0.25%)
-    atr_stop_mult: float = 0.0          # múltiplo de ATR para calcular el SL
-    atr_tp_mult: float = 0.0            # múltiplo de ATR para calcular el TP
-    point_value: float = 1.0            # valor monetario de 1 punto para 1.0 contrato
-    max_bars_in_trade: int = 60         # duración máxima del trade en barras
+    sl_pct: float = 0.01  # stop loss a -1%
+    tp_pct: float = 0.02  # take profit a +2%
+    risk_per_trade_pct: float = 0.0  # riesgo fijo por trade (0.0025 => 0.25%)
+    atr_stop_mult: float = 0.0  # múltiplo de ATR para calcular el SL
+    atr_tp_mult: float = 0.0  # múltiplo de ATR para calcular el TP
+    point_value: float = 1.0  # valor monetario de 1 punto para 1.0 contrato
+    max_bars_in_trade: int = 60  # duración máxima del trade en barras
 
     # Parámetros de la estrategia de ejemplo
-    entry_threshold: float = 0.001      # 0.1% de subida respecto al cierre anterior para entrar
+    entry_threshold: float = 0.001  # 0.1% de subida respecto al cierre anterior para entrar
 
 
 @dataclass
@@ -45,16 +46,18 @@ class BacktestResult:
     """
     Resultado del backtest.
     """
-    equity: np.ndarray                  # serie de equity
-    cash: float                         # efectivo final
-    position: float                     # posición final
-    trade_log: Dict[str, np.ndarray]    # arrays con info de los trades
-    extra: Dict[str, Any]               # parámetros y metadatos
+
+    equity: np.ndarray  # serie de equity
+    cash: float  # efectivo final
+    position: float  # posición final
+    trade_log: Dict[str, np.ndarray]  # arrays con info de los trades
+    extra: Dict[str, Any]  # parámetros y metadatos
 
 
 # =====================
 # Estrategia de ejemplo (Numba)
 # =====================
+
 
 @njit
 def _example_strategy_long_on_up_move(
@@ -151,13 +154,7 @@ def _compute_risk_based_qty(
     Se redondea al múltiplo de min_trade_size más cercano y se recorta con un
     máximo opcional.
     """
-    if (
-        equity <= 0.0
-        or atr_value <= 0.0
-        or atr_stop_mult <= 0.0
-        or point_value <= 0.0
-        or risk_per_trade_pct <= 0.0
-    ):
+    if equity <= 0.0 or atr_value <= 0.0 or atr_stop_mult <= 0.0 or point_value <= 0.0 or risk_per_trade_pct <= 0.0:
         return 0.0
 
     stop_distance = atr_stop_mult * atr_value
@@ -233,6 +230,7 @@ def compute_position_size(
 # Motor de backtest con SL/TP & duración (Numba)
 # =====================
 
+
 @njit
 def _backtest_with_risk(
     ts: np.ndarray,
@@ -253,9 +251,9 @@ def _backtest_with_risk(
     max_bars_in_trade: int,
 ) -> Tuple[
     np.ndarray,  # equity
-    float,       # cash final
-    float,       # posición final
-    int,         # número de trades
+    float,  # cash final
+    float,  # posición final
+    int,  # número de trades
     np.ndarray,  # trade_entry_idx
     np.ndarray,  # trade_exit_idx
     np.ndarray,  # trade_entry_price
@@ -439,6 +437,7 @@ def _backtest_with_risk(
 # Interfaz de alto nivel (Python)
 # =====================
 
+
 def run_backtest_basic(
     data: OHLCVArrays,
     config: BacktestConfig | None = None,
@@ -536,9 +535,12 @@ def run_backtest_basic(
         trade_log=trade_log,
         extra=extra,
     )
+
+
 # =====================
 # Motor de backtest usando SEÑALES externas (Numba)
 # =====================
+
 
 @njit
 def _backtest_with_risk_from_signals(
@@ -568,9 +570,9 @@ def _backtest_with_risk_from_signals(
     max_bars_in_trade: int,
 ) -> Tuple[
     np.ndarray,  # equity
-    float,       # cash final
-    float,       # posición final
-    int,         # número de trades
+    float,  # cash final
+    float,  # posición final
+    int,  # número de trades
     np.ndarray,  # trade_entry_idx
     np.ndarray,  # trade_exit_idx
     np.ndarray,  # trade_entry_price
@@ -815,6 +817,7 @@ def _backtest_with_risk_from_signals(
 # Interfaz de alto nivel usando señales externas
 # =====================
 
+
 def run_backtest_with_signals(
     data: OHLCVArrays,
     signals: np.ndarray,
@@ -851,9 +854,7 @@ def run_backtest_with_signals(
     if atr is None:
         atr = np.full_like(data.c, np.nan, dtype=float)
     elif atr.shape[0] != data.c.shape[0]:
-        raise ValueError(
-            f"El tamaño de atr ({atr.shape[0]}) no coincide con el número de barras ({data.c.shape[0]})."
-        )
+        raise ValueError(f"El tamaño de atr ({atr.shape[0]}) no coincide con el número de barras ({data.c.shape[0]}).")
 
     if stop_losses is None:
         stop_losses = np.full_like(data.c, np.nan, dtype=float)

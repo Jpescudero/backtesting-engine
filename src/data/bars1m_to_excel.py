@@ -2,12 +2,13 @@
 from __future__ import annotations
 
 from pathlib import Path
+
 import pandas as pd
 
 from src.config.paths import (
-    PARQUET_TICKS_DIR,
-    OTHER_DATA_DIR,
     ensure_directories_exist,
+    OTHER_DATA_DIR,
+    PARQUET_TICKS_DIR,
 )
 from src.data.data_utils import iter_ticks_by_year, make_ohlcv
 
@@ -44,9 +45,13 @@ def generate_1m_bars_csv(
     parquet_root = parquet_root.resolve()
 
     # Destino del CSV
-    output_csv = Path(output_csv) if output_csv is not None else get_default_output_csv(
-        symbol=symbol,
-        timeframe=timeframe,
+    output_csv = (
+        Path(output_csv)
+        if output_csv is not None
+        else get_default_output_csv(
+            symbol=symbol,
+            timeframe=timeframe,
+        )
     )
     output_csv = output_csv.resolve()
     output_csv.parent.mkdir(parents=True, exist_ok=True)
@@ -65,9 +70,9 @@ def generate_1m_bars_csv(
         ohlcv = make_ohlcv(
             df_ticks,
             timeframe=timeframe,
-            price_col="mid",      # ajusta si tu columna de precio se llama distinto
-            volume_col=None,      # pon el nombre si tienes volumen en los ticks
-            include_n_ticks=True  # opcional: nº de ticks por barra
+            price_col="mid",  # ajusta si tu columna de precio se llama distinto
+            volume_col=None,  # pon el nombre si tienes volumen en los ticks
+            include_n_ticks=True,  # opcional: nº de ticks por barra
         )
 
         if ohlcv.empty:

@@ -63,9 +63,7 @@ def _strategy_suffix(strategy_name: str) -> str:
     return strategy_name.replace(" ", "_")
 
 
-def generate_main_plots(
-    result, data, strategy_name: str, reports_dir: Path | None, show: bool
-) -> Path | None:
+def generate_main_plots(result, data, strategy_name: str, reports_dir: Path | None, show: bool) -> Path | None:
     fig, (ax1, ax2) = plt.subplots(2, 1, sharex=False)
     plot_equity_curve(result, data, ax=ax1, strategy_name=strategy_name)
     plot_trades_per_month(result, data, ax=ax2, strategy_name=strategy_name)

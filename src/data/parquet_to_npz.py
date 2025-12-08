@@ -9,9 +9,9 @@ import numpy as np
 import pandas as pd
 
 from src.config.paths import (
-    PARQUET_BARS_1M_DIR,
-    NPZ_DIR,
     ensure_directories_exist,
+    NPZ_DIR,
+    PARQUET_BARS_1M_DIR,
 )
 
 
@@ -64,7 +64,6 @@ def bars_df_to_npz_arrays(df: pd.DataFrame) -> dict[str, np.ndarray]:
     return {"ts": ts, "o": o, "h": h, "l": low, "c": c, "v": v}
 
 
-
 def convert_parquet_file_to_npz(
     parquet_path: Path,
     npz_path: Path,
@@ -93,9 +92,7 @@ def convert_parquet_file_to_npz(
                 df = df.set_index(candidate)
                 break
         else:
-            raise ValueError(
-                f"No se encontró índice datetime ni columna de tiempo estándar en {parquet_path}"
-            )
+            raise ValueError(f"No se encontró índice datetime ni columna de tiempo estándar en {parquet_path}")
 
     arrays = bars_df_to_npz_arrays(df)
 
@@ -152,4 +149,3 @@ if __name__ == "__main__":
     # python -m src.data.parquet_to_npz
     SYMBOL = "NDXm"
     convert_all_parquet_bars_to_npz(SYMBOL, suffix="_1m")
-

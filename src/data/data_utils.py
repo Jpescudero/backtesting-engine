@@ -5,7 +5,6 @@ from typing import Iterator, Sequence
 
 import pandas as pd
 
-
 # =========================
 # CARGA DE TICKS DESDE PARQUETS
 # =========================
@@ -80,8 +79,7 @@ def load_all_ticks(
     files = list_tick_files(parquet_root, symbol=symbol, year=year, pattern=pattern)
     if not files:
         raise FileNotFoundError(
-            f"No se han encontrado parquet en {parquet_root} "
-            f"para symbol={symbol!r}, year={year!r}"
+            f"No se han encontrado parquet en {parquet_root} " f"para symbol={symbol!r}, year={year!r}"
         )
 
     frames = [pd.read_parquet(p) for p in files]

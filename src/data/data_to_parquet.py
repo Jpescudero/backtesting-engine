@@ -9,16 +9,14 @@ import pandas as pd
 
 from src.config.paths import (
     DARWINEX_RAW_DIR,
-    PARQUET_TICKS_DIR,
     ensure_directories_exist,
+    PARQUET_TICKS_DIR,
 )
 
 # Símbolo por defecto (puedes cambiarlo o parametrizarlo desde main)
 DEFAULT_SYMBOL = "NDXm"
 
-FILENAME_RE = re.compile(
-    r"(?P<symbol>.+)_(?P<side>BID|ASK)_(?P<date>\d{4}-\d{2}-\d{2})_(?P<hour>\d{2})\.log\.gz$"
-)
+FILENAME_RE = re.compile(r"(?P<symbol>.+)_(?P<side>BID|ASK)_(?P<date>\d{4}-\d{2}-\d{2})_(?P<hour>\d{2})\.log\.gz$")
 
 
 def parse_filename(path: Path) -> dict:

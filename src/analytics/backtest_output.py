@@ -12,14 +12,13 @@ Diseño "ultralight":
 
 from __future__ import annotations
 
+import json
 from dataclasses import asdict, is_dataclass
 from pathlib import Path
 from typing import Any, Dict, Mapping, Optional, Tuple
 
-import json
 import numpy as np
 import pandas as pd
-
 
 # Límites para no matar Excel ni el tiempo de escritura
 MAX_EQUITY_ROWS_EXCEL = 5_000
@@ -274,12 +273,8 @@ def save_backtest_summary_to_excel(
 
     trades_df_excel, n_trades_original = _prepare_trades_df_for_excel(trades_df)
 
-    eq_stats_df = pd.DataFrame(
-        [{"metric": k, "value": _to_serializable(v)} for k, v in equity_stats.items()]
-    )
-    tr_stats_df = pd.DataFrame(
-        [{"metric": k, "value": _to_serializable(v)} for k, v in trade_stats.items()]
-    )
+    eq_stats_df = pd.DataFrame([{"metric": k, "value": _to_serializable(v)} for k, v in equity_stats.items()])
+    tr_stats_df = pd.DataFrame([{"metric": k, "value": _to_serializable(v)} for k, v in trade_stats.items()])
 
     meta_items = list((meta or {}).items())
     meta_extra_info = []
@@ -304,9 +299,7 @@ def save_backtest_summary_to_excel(
 
     meta_all = meta_items + meta_extra_info
 
-    meta_df = pd.DataFrame(
-        [{"key": str(k), "value": v} for k, v in meta_all]
-    )
+    meta_df = pd.DataFrame([{"key": str(k), "value": v} for k, v in meta_all])
 
     with pd.ExcelWriter(excel_path) as writer:
         equity_df.to_excel(writer, sheet_name="equity_sample")
@@ -316,5 +309,3 @@ def save_backtest_summary_to_excel(
         meta_df.to_excel(writer, sheet_name="meta", index=False)
 
     return excel_path, json_path
-
-

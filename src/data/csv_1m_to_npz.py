@@ -7,7 +7,7 @@ from typing import Optional, Sequence
 import numpy as np
 import pandas as pd
 
-from src.config.paths import DATA_DIR, NPZ_DIR, ensure_directories_exist
+from src.config.paths import DATA_DIR, ensure_directories_exist, NPZ_DIR
 from src.data.parquet_to_npz import bars_df_to_npz_arrays
 
 

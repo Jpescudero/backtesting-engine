@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-import numpy as np
+import math
 
 
 def compute_position_size(
@@ -68,5 +68,5 @@ def compute_position_size(
     scale = max(min_scale, min(max_scale, scale))
 
     # Tamaño final entero, sin permitir valores negativos.
-    units = int(np.floor(units_base * scale))
+    units = int(math.floor(units_base * scale))
     return max(units, 0)

@@ -18,8 +18,8 @@ from typing import Iterable, Sequence
 from src.engine.core import BacktestConfig
 from src.pipeline.backtest_runner import (
     BacktestRunConfig,
-    StrategyParams,
     run_single_backtest,
+    StrategyParams,
 )
 from src.strategies.microstructure_sweep import SweepParams
 
@@ -52,35 +52,104 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--min-pullback-atr", type=float, default=0.3, help="Retroceso mínimo en ATR")
     parser.add_argument("--max-pullback-atr", type=float, default=1.3, help="Retroceso máximo en ATR")
     parser.add_argument("--max-pullback-bars", type=int, default=12, help="Velas máximas del pullback")
-    parser.add_argument("--exhaustion-close-min", type=float, default=0.35, help="Posición mínima del cierre de la vela de agotamiento")
-    parser.add_argument("--exhaustion-close-max", type=float, default=0.65, help="Posición máxima del cierre de la vela de agotamiento")
-    parser.add_argument("--exhaustion-body-max-ratio", type=float, default=0.5, help="Relación máxima cuerpo/rango para la vela de agotamiento")
+    parser.add_argument(
+        "--exhaustion-close-min", type=float, default=0.35, help="Posición mínima del cierre de la vela de agotamiento"
+    )
+    parser.add_argument(
+        "--exhaustion-close-max", type=float, default=0.65, help="Posición máxima del cierre de la vela de agotamiento"
+    )
+    parser.add_argument(
+        "--exhaustion-body-max-ratio",
+        type=float,
+        default=0.5,
+        help="Relación máxima cuerpo/rango para la vela de agotamiento",
+    )
     parser.add_argument("--shift-body-atr", type=float, default=0.45, help="Mínimo cuerpo de la vela shift en ATR")
     parser.add_argument("--structure-break-lookback", type=int, default=3, help="Ventana de ruptura de microestructura")
 
     # Parámetros Microstructure Sweep
-    parser.add_argument("--sweep-lookback", type=int, default=SweepParams.sweep_lookback, help="Ventana de lookback para mínimos previos")
-    parser.add_argument("--min-sweep-break-atr", type=float, default=SweepParams.min_sweep_break_atr, help="Mínima ruptura del mínimo previo en ATR")
-    parser.add_argument("--min-lower-wick-body-ratio", type=float, default=SweepParams.min_lower_wick_body_ratio, help="Relación mínima mecha/cuerpo")
-    parser.add_argument("--min-sweep-range-atr", type=float, default=SweepParams.min_sweep_range_atr, help="Rango mínimo de la vela de barrida en ATR")
-    parser.add_argument("--confirm-body-atr", type=float, default=SweepParams.confirm_body_atr, help="Cuerpo mínimo de la vela de confirmación en ATR")
-    parser.add_argument("--no-confirm-close-above-mid", action="store_false", dest="confirm_close_above_mid", help="Permitir cierres por debajo de la mitad de la vela de barrida")
+    parser.add_argument(
+        "--sweep-lookback",
+        type=int,
+        default=SweepParams.sweep_lookback,
+        help="Ventana de lookback para mínimos previos",
+    )
+    parser.add_argument(
+        "--min-sweep-break-atr",
+        type=float,
+        default=SweepParams.min_sweep_break_atr,
+        help="Mínima ruptura del mínimo previo en ATR",
+    )
+    parser.add_argument(
+        "--min-lower-wick-body-ratio",
+        type=float,
+        default=SweepParams.min_lower_wick_body_ratio,
+        help="Relación mínima mecha/cuerpo",
+    )
+    parser.add_argument(
+        "--min-sweep-range-atr",
+        type=float,
+        default=SweepParams.min_sweep_range_atr,
+        help="Rango mínimo de la vela de barrida en ATR",
+    )
+    parser.add_argument(
+        "--confirm-body-atr",
+        type=float,
+        default=SweepParams.confirm_body_atr,
+        help="Cuerpo mínimo de la vela de confirmación en ATR",
+    )
+    parser.add_argument(
+        "--no-confirm-close-above-mid",
+        action="store_false",
+        dest="confirm_close_above_mid",
+        help="Permitir cierres por debajo de la mitad de la vela de barrida",
+    )
     parser.set_defaults(confirm_close_above_mid=SweepParams.confirm_close_above_mid)
-    parser.add_argument("--volume-period", type=int, default=SweepParams.volume_period, help="Periodo para volumen medio")
+    parser.add_argument(
+        "--volume-period", type=int, default=SweepParams.volume_period, help="Periodo para volumen medio"
+    )
     parser.add_argument("--min-rvol", type=float, default=SweepParams.min_rvol, help="Volumen relativo mínimo")
-    parser.add_argument("--vol-percentile-min", type=float, default=SweepParams.vol_percentile_min, help="Percentil inferior de volumen intradía")
-    parser.add_argument("--vol-percentile-max", type=float, default=SweepParams.vol_percentile_max, help="Percentil superior de volumen intradía")
-    parser.add_argument("--no-trend-filter", action="store_false", dest="use_trend_filter", help="Desactivar filtro de tendencia EMA")
+    parser.add_argument(
+        "--vol-percentile-min",
+        type=float,
+        default=SweepParams.vol_percentile_min,
+        help="Percentil inferior de volumen intradía",
+    )
+    parser.add_argument(
+        "--vol-percentile-max",
+        type=float,
+        default=SweepParams.vol_percentile_max,
+        help="Percentil superior de volumen intradía",
+    )
+    parser.add_argument(
+        "--no-trend-filter", action="store_false", dest="use_trend_filter", help="Desactivar filtro de tendencia EMA"
+    )
     parser.set_defaults(use_trend_filter=SweepParams.use_trend_filter)
-    parser.add_argument("--max-atr-mult-intraday", type=float, default=SweepParams.max_atr_mult_intraday, help="Umbral máximo de ATR intradía")
-    parser.add_argument("--max-trades-per-day", type=int, default=SweepParams.max_trades_per_day, help="Máximo de operaciones diarias")
-    parser.add_argument("--sweep-max-holding-bars", type=int, default=SweepParams.max_holding_bars, help="Máximo de velas en posición para Sweep")
-    parser.add_argument("--atr-stop-mult", type=float, default=SweepParams.atr_stop_mult, help="Buffer ATR para stop loss")
+    parser.add_argument(
+        "--max-atr-mult-intraday",
+        type=float,
+        default=SweepParams.max_atr_mult_intraday,
+        help="Umbral máximo de ATR intradía",
+    )
+    parser.add_argument(
+        "--max-trades-per-day", type=int, default=SweepParams.max_trades_per_day, help="Máximo de operaciones diarias"
+    )
+    parser.add_argument(
+        "--sweep-max-holding-bars",
+        type=int,
+        default=SweepParams.max_holding_bars,
+        help="Máximo de velas en posición para Sweep",
+    )
+    parser.add_argument(
+        "--atr-stop-mult", type=float, default=SweepParams.atr_stop_mult, help="Buffer ATR para stop loss"
+    )
     parser.add_argument("--rr-multiple", type=float, default=SweepParams.rr_multiple, help="Multiplicador RR para TP")
-    parser.add_argument("--config-file", type=str, default=None,
-                        help="Ruta a archivo de configuración simple key=value")
-    parser.add_argument("--initial-cash", type=float, default=None,
-                        help="Capital inicial; si no se indica se toma del config o 100k")
+    parser.add_argument(
+        "--config-file", type=str, default=None, help="Ruta a archivo de configuración simple key=value"
+    )
+    parser.add_argument(
+        "--initial-cash", type=float, default=None, help="Capital inicial; si no se indica se toma del config o 100k"
+    )
     parser.add_argument("--commission", type=float, default=1.0)
     parser.add_argument("--trade-size", type=float, default=1.0)
     parser.add_argument("--slippage", type=float, default=0.0)
@@ -88,10 +157,12 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--tp-pct", type=float, default=0.02)
     parser.add_argument("--max-bars", type=int, default=60, help="Máximo de velas en una operación")
     parser.add_argument("--entry-threshold", type=float, default=0.0)
-    parser.add_argument("--train-years", type=str, default=None,
-                        help="Años de entrenamiento separados por comas, p.ej. 2019,2020")
-    parser.add_argument("--test-years", type=str, default=None,
-                        help="Años de test separados por comas, p.ej. 2021,2022")
+    parser.add_argument(
+        "--train-years", type=str, default=None, help="Años de entrenamiento separados por comas, p.ej. 2019,2020"
+    )
+    parser.add_argument(
+        "--test-years", type=str, default=None, help="Años de test separados por comas, p.ej. 2021,2022"
+    )
     parser.add_argument(
         "--use-test-years",
         action="store_true",
@@ -309,7 +380,9 @@ def main(argv: Iterable[str] | None = None) -> None:
     initial_cash = _get_setting(args.initial_cash, config_file_values, "initial_cash", 100_000.0, float)
     train_years = _get_setting(_parse_years(args.train_years), config_file_values, "train_years", None, _parse_years)
     test_years = _get_setting(_parse_years(args.test_years), config_file_values, "test_years", None, _parse_years)
-    use_test_years = _get_setting(args.use_test_years, config_file_values, "use_test_years", False, lambda v: str(v).lower() == "true")
+    use_test_years = _get_setting(
+        args.use_test_years, config_file_values, "use_test_years", False, lambda v: str(v).lower() == "true"
+    )
 
     if strategy_name == "microstructure_sweep":
         sweep_defaults = SweepParams()
@@ -317,7 +390,9 @@ def main(argv: Iterable[str] | None = None) -> None:
             ema_short=_get_setting(args.ema_short, config_file_values, "ema_short", sweep_defaults.ema_short, int),
             ema_long=_get_setting(args.ema_long, config_file_values, "ema_long", sweep_defaults.ema_long, int),
             atr_period=_get_setting(args.atr_period, config_file_values, "atr_period", sweep_defaults.atr_period, int),
-            atr_timeframe=_get_setting(args.atr_timeframe, config_file_values, "atr_timeframe", sweep_defaults.atr_timeframe),
+            atr_timeframe=_get_setting(
+                args.atr_timeframe, config_file_values, "atr_timeframe", sweep_defaults.atr_timeframe
+            ),
             atr_timeframe_period=_get_setting(
                 args.atr_timeframe_period,
                 config_file_values,
@@ -504,14 +579,8 @@ def main(argv: Iterable[str] | None = None) -> None:
     if run_config.generate_main_plots:
         print(f"Plot equity/trades: {_describe_artifact(artifacts.reports.equity_path)}")
     if run_config.generate_trade_plots:
-        print(
-            "Plot mejores trades: "
-            f"{_describe_artifact(artifacts.reports.best_trade_plot_path)}"
-        )
-        print(
-            "Plot peores trades: "
-            f"{_describe_artifact(artifacts.reports.worst_trade_plot_path)}"
-        )
+        print("Plot mejores trades: " f"{_describe_artifact(artifacts.reports.best_trade_plot_path)}")
+        print("Plot peores trades: " f"{_describe_artifact(artifacts.reports.worst_trade_plot_path)}")
 
     print_timings(artifacts.timings)
 

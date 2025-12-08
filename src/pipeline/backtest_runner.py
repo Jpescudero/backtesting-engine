@@ -21,9 +21,8 @@ from src.pipeline.reporting import (
     generate_trade_plots,
 )
 from src.strategies.microstructure_reversal import StrategyMicrostructureReversal
-from src.strategies.microstructure_sweep import SweepParams, StrategyMicrostructureSweep
+from src.strategies.microstructure_sweep import StrategyMicrostructureSweep, SweepParams
 from src.utils.timing import timed_step
-
 
 logger = logging.getLogger(__name__)
 
@@ -106,9 +105,7 @@ def run_single_backtest(config: BacktestRunConfig) -> BacktestArtifacts:
     _configure_matplotlib(config.headless)
 
     if config.strategy_name not in {"microstructure_reversal", "microstructure_sweep"}:
-        raise ValueError(
-            "Solo se soportan las estrategias 'microstructure_reversal' y 'microstructure_sweep'"
-        )
+        raise ValueError("Solo se soportan las estrategias 'microstructure_reversal' y 'microstructure_sweep'")
 
     timings: Dict[str, float] = {}
     reports_dir = config.reports_dir or (REPORTS_DIR / config.symbol).resolve()
@@ -130,9 +127,7 @@ def run_single_backtest(config: BacktestRunConfig) -> BacktestArtifacts:
     with timed_step(timings, "02_carga_feed_npz"):
         feed = NPZOHLCVFeed(symbol=config.symbol, timeframe=config.timeframe)
 
-        use_test_years = config.use_test_years or (
-            config.test_years is not None and not config.train_years
-        )
+        use_test_years = config.use_test_years or (config.test_years is not None and not config.train_years)
 
         if use_test_years and not config.test_years:
             raise ValueError("'use_test_years' está a True pero no se han definido test_years")
@@ -207,9 +202,7 @@ def run_single_backtest(config: BacktestRunConfig) -> BacktestArtifacts:
             )
 
         strat_res = strategy.generate_signals(data, external_atr=atr_override)
-    strategy_label = _effective_strategy_name(
-        config.strategy_name, getattr(strat_res, "meta", None)
-    )
+    strategy_label = _effective_strategy_name(config.strategy_name, getattr(strat_res, "meta", None))
     n_signals = int((strat_res.signals != 0).sum())
     logger.info("Estrategia %s: %s señales generadas", strategy_label, n_signals)
 
