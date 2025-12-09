@@ -32,11 +32,17 @@ class OpeningSweepV4(Strategy):
     """Opening sweep strategy with precomputed signals and ATR buffers."""
 
     def __init__(self, config: Mapping[str, Any] | None = None) -> None:
-        super().__init__(dict(config or {}))
+        if isinstance(config, OpeningSweepV4Params):
+            config_dict = asdict(config)
+        else:
+            config_dict = dict(config or {})
+
+        super().__init__(config_dict)
+
         if isinstance(config, OpeningSweepV4Params):
             self.params = config
         else:
-            merged = DEFAULTS | dict(config or {})
+            merged = DEFAULTS | config_dict
             self.params = OpeningSweepV4Params(**merged)
         self.signals: np.ndarray | None = None
         self.atr: np.ndarray | None = None
