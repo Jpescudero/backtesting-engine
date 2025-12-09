@@ -1,0 +1,35 @@
+# Instrumento y horizonte temporal
+SYMBOL=NDX
+START_YEAR=2018
+END_YEAR=2022
+
+# Rutas de datos (ajusta si es necesario a la estructura del repo)
+DATA_PATH=data    # ruta base relativa donde están los datos 1m
+DATA_FILE_PATTERN={symbol}_1m.parquet
+
+# Parámetros de mean reversion
+LOOKBACK_MINUTES=20
+ZSCORE_ENTRY=1.5       # disparo de evento
+ZSCORE_EXIT=0.0        # opcional, para salida por z-score
+HOLD_TIME_BARS=5       # horizonte fijo en velas 1m
+
+# Filtros
+SESSION_START_TIME=15:35
+SESSION_END_TIME=21:45
+MIN_DAILY_VOL_PCT=0.0
+MAX_DAILY_VOL_PCT=10.0
+
+# Riesgo y modelado de SL/TP (para fases posteriores)
+STOP_LOSS_ATR_MULT=1.0
+TAKE_PROFIT_ATR_MULT=1.5
+
+# Costes (Darwinex aproximado; ajustable)
+SPREAD_POINTS=1.0
+COMMISSION_PER_CONTRACT=2.5
+SLIPPAGE_POINTS=0.3
+CONTRACT_MULTIPLIER=1.0
+
+# Optimización
+GRID_LOOKBACK_MINUTES=5,10,15,20,30,60
+GRID_ZSCORE_ENTRY=0.5,1.0,1.5,2.0
+GRID_HOLD_TIME_BARS=1,3,5,10,20
