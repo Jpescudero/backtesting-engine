@@ -1,14 +1,22 @@
 """Shared helpers for loading intraday session data for opening sweep studies."""
 
+# ruff: noqa: E402
+
 from __future__ import annotations
 
+import sys
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Sequence, Tuple
 
 import numpy as np
 import pandas as pd
 
-from src.data.feeds import NPZOHLCVFeed
+REPO_ROOT = Path(__file__).resolve().parents[2]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
+from src.data.feeds import NPZOHLCVFeed  # noqa: E402
 
 SessionWindow = Tuple[str, str]
 
