@@ -2,7 +2,12 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from src.config.paths import NPZ_DIR, PARQUET_TICKS_DIR, ensure_directories_exist
+from src.config.paths import (
+    NPZ_DIR,
+    PARQUET_TICKS_DIR,
+    ensure_directories_exist,
+    resolve_data_dir_with_pattern,
+)
 from src.data.bars1m_to_excel import generate_1m_bars_csv, get_default_output_csv
 from src.data.csv_1m_to_npz import csv_1m_to_npz
 from src.data.data_to_parquet import DEFAULT_SYMBOL, data_to_parquet
@@ -15,8 +20,10 @@ def ensure_ticks_and_csv(symbol: str = DEFAULT_SYMBOL) -> Path:
     """
     ensure_directories_exist()
 
+    parquet_root = resolve_data_dir_with_pattern(PARQUET_TICKS_DIR, "*.parquet")
+
     try:
-        tick_files = list_tick_files(PARQUET_TICKS_DIR, symbol=symbol)
+        tick_files = list_tick_files(parquet_root, symbol=symbol)
     except FileNotFoundError:
         tick_files = []
 

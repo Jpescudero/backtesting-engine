@@ -8,3 +8,5 @@ initial_cash=2000
 train_years=2018,2019,2020,2021,2022
 test_years=2023,2024,2025
 use_test_years=False
+# Sincroniza el hub activo hacia OneDrive (manténlo en False salvo que quieras copiar cambios)
+sync_cloud=False

@@ -59,6 +59,7 @@ This table expands on the individual scripts and modules so you can quickly unde
 | --- | --- |
 | `main.py` | CLI entry point that orchestrates the full pipeline (data prep → strategy signals → backtest → reports). Generates Excel/JSON summaries plus trade/equity PNGs, supports Microstructure Reversal (default) or Microstructure Sweep, and lets you pick train/test years, risk params, and advanced ATR/vol filters via flags. |
 | `run_settings.example.txt` | Key-value configuration template for `main.py`. Copy it, fill in `initial_cash`, `train_years`, `test_years`, `use_test_years`, `strategy`, and optional sweep/reversal parameters, then pass it through `--config-file`. |
+| `src/config/data_roots.example.json` | Suggested list of local/cloud data hubs (e.g., `C:/Users/JorgeP/Market Data` + OneDrive mirror). Copy to `data_roots.json` to customize more machines and hubs. |
 | `src/config/paths.py` | Centralized “GPS” for directories (project root, data, reports, etc.). |
 | `src/pipeline/__init__.py` | Convenience imports for the pipeline package. |
 | `src/pipeline/data_pipeline.py` | Ensures downstream artifacts exist by chaining ticks → CSV → NPZ generation. Ideal when you want a single call to prepare datasets before backtests. |
