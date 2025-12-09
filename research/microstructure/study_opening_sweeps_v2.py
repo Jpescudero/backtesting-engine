@@ -5,17 +5,27 @@ Adds wick filter, ATR filter, volume filter.
 Still uses forward returns. Optimizer-compatible.
 """
 
+# ruff: noqa: E402, I001
+
 from __future__ import annotations
 
+import sys
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 
-import numpy as np
-import pandas as pd
-from research.microstructure.session_loader import SessionLoadConfig, load_sessions
+REPO_ROOT = Path(__file__).resolve().parents[2]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
 
-from src.config.paths import REPORTS_DIR, ensure_directories_exist
+import numpy as np  # noqa: E402
+import pandas as pd  # noqa: E402
+from research.microstructure.session_loader import (  # noqa: E402
+    SessionLoadConfig,
+    load_sessions,
+)
+
+from src.config.paths import REPORTS_DIR, ensure_directories_exist  # noqa: E402
 
 
 @dataclass

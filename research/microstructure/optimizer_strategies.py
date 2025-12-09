@@ -1,11 +1,14 @@
 """Unified and extensible optimizer for opening sweep research strategies."""
 
+# ruff: noqa: E402, I001
+
 from __future__ import annotations
 
 import argparse
 import itertools
 import json
 import multiprocessing as mp
+import sys
 import time
 from dataclasses import dataclass
 from datetime import datetime
@@ -14,11 +17,64 @@ from typing import Any, Callable, Sequence
 
 import matplotlib.pyplot as plt
 import pandas as pd
-import research.microstructure.study_opening_sweeps_v1 as V1
-import research.microstructure.study_opening_sweeps_v2 as V2
-import research.microstructure.study_opening_sweeps_v3 as V3
 
-from src.config.paths import REPORTS_DIR
+REPO_ROOT = Path(__file__).resolve().parents[2]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
+import research.microstructure.study_opening_sweeps_v1 as V1  # noqa: E402
+import research.microstructure.study_opening_sweeps_v2 as V2  # noqa: E402
+import research.microstructure.study_opening_sweeps_v3 as V3  # noqa: E402
+
+from src.config.paths import REPORTS_DIR  # noqa: E402
+
+StrategyData = tuple[pd.DataFrame, Any]
+
+_GLOBAL_ADAPTER: StrategyAdapter | None = None
+_GLOBAL_DATA: pd.DataFrame | None = None
+_GLOBAL_CONTEXT: Any = None
+
+
+@dataclass
+class HeatmapSpec:
+    x_param: str
+    y_param: str
+    value_param: str
+    filename: str
+
+
+@dataclass
+class StrategyAdapter:
+    """Adapter that exposes a unified API for the optimizer."""
+
+    name: str
+    param_grid: dict[str, Sequence[float]]
+    preload: Callable[[], StrategyData]
+    run: Callable[[pd.DataFrame, Any, dict[str, float]], pd.DataFrame]
+    heatmaps: Sequence[HeatmapSpec] = ()
+
+    def parameter_sets(self) -> list[dict[str, float]]:
+        keys = list(self.param_grid.keys())
+        values = list(self.param_grid.values())
+        combos = [dict(zip(keys, vals)) for vals in itertools.product(*values)]
+        return combos
+
+
+def _init_worker(adapter: StrategyAdapter, data: pd.DataFrame, context: Any) -> None:
+    global _GLOBAL_ADAPTER, _GLOBAL_DATA, _GLOBAL_CONTEXT
+    _GLOBAL_ADAPTER = adapter
+    _GLOBAL_DATA = data
+    _GLOBAL_CONTEXT = context
+
+
+def _worker_eval(params: dict[str, float]) -> dict[str, Any]:
+    if _GLOBAL_ADAPTER is None or _GLOBAL_DATA is None:
+        raise RuntimeError("Worker not initialized")
+
+    trades = _GLOBAL_ADAPTER.run(_GLOBAL_DATA, _GLOBAL_CONTEXT, params)
+    metrics = evaluate_trade_results(trades)
+    metrics.update(params)
+    return metrics
 
 StrategyData = tuple[pd.DataFrame, Any]
 
