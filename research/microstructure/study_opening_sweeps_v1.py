@@ -1,9 +1,4 @@
-"""
-V2 — Microstructural Opening Sweep Study
-----------------------------------------
-Adds wick filter, ATR filter, volume filter.
-Still uses forward returns. Optimizer-compatible.
-"""
+"""V1 — Opening Sweep study using forward returns only."""
 
 from __future__ import annotations
 
@@ -19,27 +14,33 @@ from src.config.paths import REPORTS_DIR, ensure_directories_exist
 
 
 @dataclass
-class SweepStudyConfigV2:
+class SweepStudyConfigV1:
+    """Configuration for the baseline opening sweep study."""
+
     index: str
     start_year: int
     end_year: int
     timezone: str
-    min_wick_factor: float = 1.5
-    min_atr_percentile: float = 0.4
-    require_volume_percentile: float = 0.5
+    min_wick_factor: float = 1.2
+    min_atr_percentile: float = 0.2
+    require_volume_percentile: float = 0.4
+
+
+WINDOWS: tuple[tuple[str, str], ...] = (("08:55", "10:00"), ("14:55", "16:00"))
 
 
 # ============================================================
-# DATA LOADING
+# DATA PREPARATION
 # ============================================================
 
 
-def _load_df(cfg: SweepStudyConfigV2) -> pd.DataFrame:
+def _base_df(cfg: SweepStudyConfigV1) -> pd.DataFrame:
+    years = list(range(cfg.start_year, cfg.end_year + 1))
     df, _ = load_sessions(
         SessionLoadConfig(
             symbol=cfg.index,
-            years=range(cfg.start_year, cfg.end_year + 1),
-            windows=(("08:55", "10:00"), ("14:55", "16:00")),
+            years=years,
+            windows=WINDOWS,
             timezone=cfg.timezone,
         )
     )
@@ -51,7 +52,9 @@ def _load_df(cfg: SweepStudyConfigV2) -> pd.DataFrame:
 # ============================================================
 
 
-def detect_sweep_signals(df: pd.DataFrame, cfg: SweepStudyConfigV2) -> pd.Series:
+def detect_sweep_signals(df: pd.DataFrame, cfg: SweepStudyConfigV1) -> pd.Series:
+    """Identify opening sweep entries based on wick prominence and filters."""
+
     open_, high, low, close = (
         df.open.values,
         df.high.values,
@@ -59,13 +62,12 @@ def detect_sweep_signals(df: pd.DataFrame, cfg: SweepStudyConfigV2) -> pd.Series
         df.close.values,
     )
     volume = df.volume.values
-    idx = df.index
 
     hl = high - low
     hc = np.abs(high - np.roll(close, 1))
     lc = np.abs(low - np.roll(close, 1))
-
     tr = np.maximum(hl, np.maximum(hc, lc))
+
     atr = pd.Series(tr).rolling(20).mean().bfill()
     atr_norm = atr / atr.rolling(1000).mean()
     atr_norm = atr_norm.replace([np.inf, -np.inf], np.nan).bfill().ffill()
@@ -73,26 +75,25 @@ def detect_sweep_signals(df: pd.DataFrame, cfg: SweepStudyConfigV2) -> pd.Series
     atr_thr = atr_norm.quantile(cfg.min_atr_percentile)
     vol_thr = np.quantile(volume, cfg.require_volume_percentile)
 
-    sig = np.zeros(len(df), dtype=np.int8)
+    signals = np.zeros(len(df), dtype=np.int8)
 
     for i in range(2, len(df)):
         body = abs(close[i] - open_[i])
         wick_down = (open_[i] - low[i]) if close[i] >= open_[i] else (close[i] - low[i])
+        wick_factor = wick_down / (body + 1e-9)
 
-        if wick_down <= cfg.min_wick_factor * body:
+        if wick_factor < cfg.min_wick_factor:
             continue
-
         if volume[i] < vol_thr:
             continue
         if atr_norm.iloc[i] < atr_thr:
             continue
-
         if not ((close[i - 1] < open_[i - 1]) and (close[i - 2] < open_[i - 2])):
             continue
 
-        sig[i] = 1
+        signals[i] = 1
 
-    return pd.Series(sig, index=idx)
+    return pd.Series(signals, index=df.index)
 
 
 # ============================================================
@@ -100,30 +101,29 @@ def detect_sweep_signals(df: pd.DataFrame, cfg: SweepStudyConfigV2) -> pd.Series
 # ============================================================
 
 
-def compute_dynamic_forward_returns(df: pd.DataFrame, atr_norm: pd.Series) -> pd.Series:
-    atr_clean = atr_norm.replace([np.inf, -np.inf], np.nan).bfill().ffill()
-    horizon = (5 + (atr_clean * 20)).clip(5, 30).astype(int)
+def compute_forward_returns(df: pd.DataFrame, horizon: int = 20) -> pd.Series:
+    """Compute fixed-horizon forward returns."""
 
-    fwd = []
+    forward = np.empty(len(df))
+    forward[:] = np.nan
+
     for i in range(len(df)):
-        h = horizon[i]
-        if i + h < len(df):
-            fwd.append(df.close.iloc[i + h] / df.close.iloc[i] - 1)
-        else:
-            fwd.append(np.nan)
-    return pd.Series(fwd, index=df.index)
+        if i + horizon < len(df):
+            forward[i] = df.close.iloc[i + horizon] / df.close.iloc[i] - 1
+
+    return pd.Series(forward, index=df.index)
 
 
 # ============================================================
-# MAIN
+# REPORTING
 # ============================================================
 
 
-def _report_folder() -> Path:
+def _report_folder(name: str) -> Path:
     ensure_directories_exist()
-    root = REPORTS_DIR / "research" / "microstructure" / "reports" / "v2"
-    stamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
-    out = root / stamp
+    root = REPORTS_DIR / "research" / "microstructure" / "reports" / name
+    timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+    out = root / timestamp
     out.mkdir(parents=True, exist_ok=True)
     return out
 
@@ -141,29 +141,24 @@ def _save_trades(trades: pd.Series, outdir: Path) -> None:
     summary.to_csv(outdir / "summary.csv", index=False)
 
 
+# ============================================================
+# MAIN EXECUTION
+# ============================================================
+
+
 def main() -> None:
-    cfg = SweepStudyConfigV2("NDXm", 2018, 2022, "Europe/Madrid")
-    df = _load_df(cfg)
-
-    high = df.high.values
-    low = df.low.values
-    close = df.close.values
-
-    tr = np.maximum(
-        high - low, np.maximum(abs(high - np.roll(close, 1)), abs(low - np.roll(close, 1)))
-    )
-    atr = pd.Series(tr).rolling(20).mean().bfill().ffill()
-    atr_norm = atr / atr.rolling(1000).mean()
+    cfg = SweepStudyConfigV1("NDXm", 2018, 2022, "Europe/Madrid")
+    df = _base_df(cfg)
 
     signals = detect_sweep_signals(df, cfg)
     entries = signals == 1
 
-    fwd = compute_dynamic_forward_returns(df, atr_norm)
-    trades = fwd[entries].dropna()
+    fwd = compute_forward_returns(df)
+    trades = fwd[entries].dropna().rename("fwd_return")
 
-    out = _report_folder()
-    _save_trades(trades, out)
-    print(f"Saved V2 trades to {out}")
+    outdir = _report_folder("v1")
+    _save_trades(trades, outdir)
+    print(f"Saved V1 trades to {outdir}")
 
 
 # ============================================================
@@ -172,37 +167,26 @@ def main() -> None:
 
 
 def preload_data() -> pd.DataFrame:
-    cfg = SweepStudyConfigV2("NDXm", 2018, 2022, "Europe/Madrid")
-    return _load_df(cfg)
+    cfg = SweepStudyConfigV1("NDXm", 2018, 2022, "Europe/Madrid")
+    return _base_df(cfg)
 
 
 def run_with_params(df: pd.DataFrame, params: dict[str, float]) -> pd.DataFrame:
-    cfg = SweepStudyConfigV2(
+    cfg = SweepStudyConfigV1(
         index="NDXm",
         start_year=2018,
         end_year=2022,
         timezone="Europe/Madrid",
-        min_wick_factor=params.get("wick_factor", 1.5),
-        min_atr_percentile=params.get("atr_percentile", 0.4),
-        require_volume_percentile=params.get("volume_percentile", 0.6),
+        min_wick_factor=params.get("wick_factor", 1.2),
+        min_atr_percentile=params.get("atr_percentile", 0.2),
+        require_volume_percentile=params.get("volume_percentile", 0.4),
     )
 
     signals = detect_sweep_signals(df, cfg)
     entries = signals == 1
 
-    high = df.high.values
-    low = df.low.values
-    close = df.close.values
-
-    tr = np.maximum(
-        high - low, np.maximum(np.abs(high - np.roll(close, 1)), np.abs(low - np.roll(close, 1)))
-    )
-    atr = pd.Series(tr).rolling(20).mean().bfill()
-    atr_norm = atr / atr.rolling(1000).mean()
-
-    fwd = compute_dynamic_forward_returns(df, atr_norm)
+    fwd = compute_forward_returns(df)
     trades = fwd[entries].dropna().rename("fwd_return")
-
     return trades.to_frame()
 
 
