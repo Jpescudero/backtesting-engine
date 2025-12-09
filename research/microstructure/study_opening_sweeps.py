@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-import argparse
 import sys
+from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Iterable, Tuple
 
@@ -15,6 +15,7 @@ if TYPE_CHECKING:
     from src.data.feeds import OHLCVArrays
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
+CONFIG_PATH = Path(__file__).with_name("study_opening_sweeps_inputs.txt")
 
 
 def _ensure_project_root_on_path() -> None:
@@ -30,14 +31,76 @@ _ensure_project_root_on_path()
 SessionWindow = Tuple[str, str]
 
 
-def load_ndxm_sessions(
-    years: Iterable[int], windows: Tuple[SessionWindow, ...], tz: str
-) -> pd.DataFrame:
-    """Load 1m bars and keep only the desired intraday windows."""
+@dataclass
+class SweepStudyConfig:
+    """Configuration values required to run the sweep study."""
+
+    index: str
+    start_year: int
+    end_year: int
+    horizon: int
+    timezone: str
+
+
+def load_config(file_path: Path = CONFIG_PATH) -> SweepStudyConfig:
+    """Read configuration values from a local text file.
+
+    The file must use ``key=value`` pairs, and lines starting with ``#``
+    are treated as comments. ``start_year`` and ``end_year`` are required;
+    ``horizon`` and ``timezone`` are optional. ``index`` defaults to
+    ``NDXm`` if unspecified.
+    """
+
+    if not file_path.exists():
+        raise FileNotFoundError(
+            f"Configuration file not found at {file_path}. Please create it locally."
+        )
+
+    values = {}
+    for line in file_path.read_text(encoding="utf-8").splitlines():
+        stripped = line.strip()
+        if not stripped or stripped.startswith("#"):
+            continue
+        if "=" not in stripped:
+            raise ValueError(
+                "Invalid line in configuration file. Use 'key=value' pairs for inputs."
+            )
+        key, value = stripped.split("=", 1)
+        values[key.strip()] = value.strip()
+
+    try:
+        start_year = int(values["start_year"])
+        end_year = int(values["end_year"])
+    except KeyError as exc:  # pragma: no cover - defensive branch
+        raise KeyError("The configuration file must define 'start_year' and 'end_year'.") from exc
+
+    if start_year > end_year:
+        raise ValueError("'start_year' cannot be greater than 'end_year'.")
+
+    horizon = int(values.get("horizon", "15"))
+    timezone = values.get("timezone", "Europe/Madrid")
+
+    return SweepStudyConfig(
+        index=values.get("index", "NDXm"),
+        start_year=start_year,
+        end_year=end_year,
+        horizon=horizon,
+        timezone=timezone,
+    )
+
+
+def load_index_sessions(
+    symbol: str, years: Iterable[int], windows: Tuple[SessionWindow, ...], tz: str
+) -> Tuple[pd.DataFrame, Path]:
+    """Load 1m bars and keep only the desired intraday windows.
+
+    Returns the filtered dataframe along with the local NPZ directory used,
+    so downstream outputs can clearly document the data origin.
+    """
 
     from src.data.feeds import NPZOHLCVFeed
 
-    feed = NPZOHLCVFeed(symbol="NDXm", timeframe="1m")
+    feed = NPZOHLCVFeed(symbol=symbol, timeframe="1m")
     data = feed.load_years(list(years))
 
     idx_utc = pd.to_datetime(data.ts, unit="ns", utc=True)
@@ -63,7 +126,7 @@ def load_ndxm_sessions(
         end_min = int(end_h) * 60 + int(end_m)
         mask |= (minutes >= start_min) & (minutes <= end_min)
 
-    return df.loc[mask]
+    return df.loc[mask], feed.base_dir
 
 
 def to_ohlcv_arrays(df: pd.DataFrame) -> "OHLCVArrays":
@@ -81,11 +144,14 @@ def to_ohlcv_arrays(df: pd.DataFrame) -> "OHLCVArrays":
 
 
 def compute_forward_returns(close: pd.Series, horizon: int) -> pd.Series:
-    fwd = close.shift(-horizon) / close - 1.0
-    return fwd
+    """Compute forward returns for a given holding horizon."""
+
+    return close.shift(-horizon) / close - 1.0
 
 
 def save_plots(returns: pd.Series, output_dir: Path) -> None:
+    """Persist histogram and equity curve plots for the trade returns."""
+
     output_dir.mkdir(parents=True, exist_ok=True)
 
     fig, ax = plt.subplots(figsize=(8, 4))
@@ -117,24 +183,14 @@ def main() -> None:
     from src.config.paths import REPORTS_DIR, ensure_directories_exist
     from src.strategies.barrida_apertura import StrategyBarridaApertura
 
-    parser = argparse.ArgumentParser(description="Study opening sweep occurrences and outcomes")
-    parser.add_argument("--start-year", type=int, required=True)
-    parser.add_argument("--end-year", type=int, required=True)
-    parser.add_argument("--horizon", type=int, default=15, help="Forward bars to measure returns")
-    parser.add_argument(
-        "--timezone",
-        type=str,
-        default="Europe/Madrid",
-        help="Timezone for session windows",
-    )
-    args = parser.parse_args()
+    config = load_config()
 
     ensure_directories_exist()
 
-    years = list(range(args.start_year, args.end_year + 1))
+    years = list(range(config.start_year, config.end_year + 1))
     session_windows: Tuple[SessionWindow, ...] = (("08:55", "10:00"), ("14:55", "16:00"))
 
-    df = load_ndxm_sessions(years, session_windows, tz=args.timezone)
+    df, data_path = load_index_sessions(config.index, years, session_windows, tz=config.timezone)
     if df.empty:
         raise ValueError("No data found for the requested years/windows")
 
@@ -143,12 +199,37 @@ def main() -> None:
     signals = strategy.generate_signals(data_arrays).signals
 
     signal_series = pd.Series(signals, index=df.index, dtype=np.int8)
-    fwd_returns = compute_forward_returns(df["close"], horizon=args.horizon)
+    fwd_returns = compute_forward_returns(df["close"], horizon=config.horizon)
 
     entries = signal_series == 1
     trade_returns = fwd_returns.loc[entries].dropna()
 
-    summary = pd.DataFrame(
+    params = pd.DataFrame(
+        {
+            "parameter": [
+                "index",
+                "start_year",
+                "end_year",
+                "horizon",
+                "timezone",
+                "session_windows",
+                "data_path",
+                "timeframe",
+            ],
+            "value": [
+                config.index,
+                config.start_year,
+                config.end_year,
+                config.horizon,
+                config.timezone,
+                ";".join([f"{start}-{end}" for start, end in session_windows]),
+                str(data_path),
+                "1m",
+            ],
+        }
+    )
+
+    metrics = pd.DataFrame(
         {
             "metric": [
                 "signals_total",
@@ -177,12 +258,15 @@ def main() -> None:
     summary_path = output_dir / "opening_sweeps_summary.csv"
     trades_path = output_dir / "opening_sweeps_trades.csv"
 
-    summary.to_csv(summary_path, index=False)
+    params.to_csv(output_dir / "opening_sweeps_parameters.csv", index=False)
+    metrics.to_csv(summary_path, index=False)
     trade_returns.rename("fwd_return").to_frame().to_csv(trades_path)
 
     save_plots(trade_returns, output_dir)
 
-    print(summary)
+    print(params)
+    print(metrics)
+    print(f"Saved parameters to {output_dir / 'opening_sweeps_parameters.csv'}")
     print(f"Saved summary to {summary_path}")
     print(f"Saved trade returns to {trades_path}")
 
