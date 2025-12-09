@@ -5,9 +5,10 @@ from pathlib import Path
 from typing import Dict, Tuple
 
 import matplotlib.pyplot as plt
+import pandas as pd
 
 from src.analytics.backtest_output import save_backtest_summary_to_excel
-from src.analytics.metrics import equity_curve_metrics, trades_metrics
+from src.analytics.metrics import equity_curve_metrics, trade_level_stats, trades_metrics
 from src.analytics.plots import plot_equity_curve, plot_trades_per_month
 from src.analytics.reporting import equity_to_series, trades_to_dataframe
 from src.analytics.trade_plots import plot_best_and_worst_trades
@@ -17,11 +18,13 @@ from src.analytics.trade_plots import plot_best_and_worst_trades
 class BacktestReports:
     equity_stats: Dict
     trade_stats: Dict
+    trade_level_stats: Dict
     equity_path: Path | None = None
     best_trade_plot_path: Path | None = None
     worst_trade_plot_path: Path | None = None
     excel_path: Path | None = None
     json_path: Path | None = None
+    levels_report_path: Path | None = None
 
 
 def compute_analytics(result, data, equity_series=None, trades_df=None):
@@ -29,7 +32,8 @@ def compute_analytics(result, data, equity_series=None, trades_df=None):
     trades_df = trades_df if trades_df is not None else trades_to_dataframe(result, data)
     equity_stats = equity_curve_metrics(equity_series)
     trade_stats = trades_metrics(trades_df)
-    return equity_series, trades_df, equity_stats, trade_stats
+    level_stats = trade_level_stats(trades_df)
+    return equity_series, trades_df, equity_stats, trade_stats, level_stats
 
 
 def generate_report_files(
@@ -40,8 +44,9 @@ def generate_report_files(
     trades_df,
     equity_stats: Dict,
     trade_stats: Dict,
+    level_stats: Dict,
     meta: Dict,
-) -> Tuple[Path, Path]:
+) -> Tuple[Path, Path, Path]:
     suffix = _strategy_suffix(strategy_name)
     excel_path, json_path = save_backtest_summary_to_excel(
         base_dir=reports_dir,
@@ -52,9 +57,12 @@ def generate_report_files(
         trades_df=trades_df,
         equity_stats=equity_stats,
         trade_stats=trade_stats,
+        level_stats=level_stats,
         meta=meta,
     )
-    return excel_path, json_path
+    levels_path = reports_dir / f"levels_stats_{symbol}_{suffix}.csv"
+    pd.DataFrame([level_stats]).to_csv(levels_path, index=False)
+    return excel_path, json_path, levels_path
 
 
 def _strategy_suffix(strategy_name: str) -> str:

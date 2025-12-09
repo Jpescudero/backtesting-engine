@@ -23,6 +23,7 @@ from src.pipeline.backtest_runner import (
     load_run_config_from_metadata,
     run_single_backtest,
 )
+from src.pipeline.reporting import _strategy_suffix
 from src.strategies.microstructure_sweep import SweepParams
 from src.strategies.opening_sweep_v4 import OpeningSweepV4Params
 from src.visualization.trades_dashboard import build_trades_dashboard
@@ -354,6 +355,31 @@ def print_metrics(title: str, stats: dict, ordered_keys: Sequence[str]) -> None:
         val = stats[key]
         is_pct = key in pct_keys
         print(f"{key:25s}: {_format_number(val, decimals=4 if is_pct else 2, pct=is_pct)}")
+
+
+def print_level_metrics(stats: dict) -> None:
+    print("\n=== Estadísticas de niveles SL/TP y break-even ===")
+    distance_sections = {
+        "SL distancia %": stats.get("sl_distance_pct", {}),
+        "TP distancia %": stats.get("tp_distance_pct", {}),
+        "SL distancia abs": stats.get("sl_distance_abs", {}),
+        "TP distancia abs": stats.get("tp_distance_abs", {}),
+    }
+    for title, values in distance_sections.items():
+        if not values:
+            continue
+        print(f"- {title}")
+        for key in ["mean", "median", "min", "max", "p25", "p75", "std", "count"]:
+            if key not in values:
+                continue
+            val = values[key]
+            print(f"    {key:8s}: {_format_number(val, decimals=4)}")
+
+    breakeven_count = stats.get("breakeven_count", 0)
+    breakeven_rate = stats.get("breakeven_rate", 0.0)
+    print("- Break-even")
+    print(f"    count: {breakeven_count}")
+    print(f"    rate:  {breakeven_rate * 100:.2f}%")
 
 
 def print_timings(timings: dict) -> None:
@@ -893,6 +919,7 @@ def main(argv: Iterable[str] | None = None) -> None:
 
     print_metrics("Métricas de equity (tipo Darwinex)", artifacts.equity_stats, equity_keys)
     print_metrics("Métricas de trades", artifacts.trade_stats, trade_keys)
+    print_level_metrics(artifacts.trade_level_stats)
     print("\n=== Tail de la curva de equity ===")
     print(artifacts.equity_series.tail().to_frame("equity"))
     print("\n=== Primeros trades ===")
@@ -903,9 +930,13 @@ def main(argv: Iterable[str] | None = None) -> None:
 
     dashboard_path = None
     if not artifacts.trades_df.empty:
-        reports_dir = run_config.reports_dir or (REPORTS_DIR / run_config.symbol)
+        reports_dir = (
+            artifacts.reports.excel_path.parent
+            if artifacts.reports.excel_path is not None
+            else (run_config.reports_dir or (REPORTS_DIR / run_config.symbol))
+        )
         reports_dir.mkdir(parents=True, exist_ok=True)
-        strategy_suffix = run_config.strategy_name.replace(" ", "_")
+        strategy_suffix = _strategy_suffix(run_config.strategy_name)
         dashboard_path = reports_dir / f"trades_dashboard_{strategy_suffix}.html"
         volatility_col = "volatility" if "volatility" in artifacts.trades_df.columns else None
         build_trades_dashboard(
@@ -918,6 +949,7 @@ def main(argv: Iterable[str] | None = None) -> None:
         print("\n=== Ficheros de resumen generados ===")
         print(f"Excel: {_describe_artifact(artifacts.reports.excel_path)}")
         print(f"JSON:  {_describe_artifact(artifacts.reports.json_path)}")
+        print(f"Levels stats: {_describe_artifact(artifacts.reports.levels_report_path)}")
     if run_config.generate_main_plots:
         print(f"Plot equity/trades: {_describe_artifact(artifacts.reports.equity_path)}")
     if run_config.generate_trade_plots:

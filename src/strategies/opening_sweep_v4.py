@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass
-from typing import Any, Dict, Mapping
+from typing import Any, Dict, Mapping, Sequence, Tuple
 
 import numpy as np
 import pandas as pd
@@ -23,6 +23,12 @@ class OpeningSweepV4Params:
     sl_buffer_relative: float = 0.1
     tp_multiplier: float = 1.2
     max_horizon: int = 30
+    session_windows: Tuple[Tuple[int, int], ...] = (
+        (8 * 60 + 50, 10 * 60),
+        (15 * 60 + 20, 16 * 60 + 30),
+    )
+    max_trades_per_day: int = 2
+    trading_timezone: str = "Europe/Madrid"
 
 
 DEFAULTS: Dict[str, Any] = asdict(OpeningSweepV4Params())
@@ -52,6 +58,7 @@ class OpeningSweepV4(Strategy):
         self.lows: np.ndarray | None = None
         self.closes: np.ndarray | None = None
         self.volumes: np.ndarray | None = None
+        self.daily_entry_counts: Dict[str, int] = {}
 
     def preload(self, df: pd.DataFrame) -> None:
         """Precompute ATR, normalized ATR, and sweep entry signals."""
@@ -71,6 +78,7 @@ class OpeningSweepV4(Strategy):
             lows=self.lows,
             v=self.volumes,
             atr_norm=self.atr_norm,
+            ts=df.index.view(np.int64),
         )
 
     def generate_signals(self, idx: int, row: Dict[str, Any]) -> SignalEntry | None:
@@ -139,7 +147,9 @@ class OpeningSweepV4(Strategy):
         self.atr = self._compute_atr(h, lows, c)
         self.atr_norm = self._normalize_atr(self.atr)
 
-        signals = self._precalc_signals(o=o, c=c, lows=lows, v=v, atr_norm=self.atr_norm)
+        signals = self._precalc_signals(
+            o=o, c=c, lows=lows, v=v, atr_norm=self.atr_norm, ts=np.asarray(data.ts)
+        )
 
         stop_losses = np.full_like(c, np.nan, dtype=float)
         take_profits = np.full_like(c, np.nan, dtype=float)
@@ -174,6 +184,11 @@ class OpeningSweepV4(Strategy):
             "atr_norm": self.atr_norm.tolist(),
             "initial_stop_loss": stop_losses.tolist(),
             "take_profit": take_profits.tolist(),
+            "session_windows": self.params.session_windows,
+            "session_mask": getattr(self, "_session_mask", []).tolist()
+            if hasattr(self, "_session_mask")
+            else [],
+            "daily_entry_counts": self.daily_entry_counts,
         }
 
         return StrategyResult(signals=signals.astype(np.int8), meta=meta)
@@ -203,7 +218,14 @@ class OpeningSweepV4(Strategy):
         return np.nan_to_num(atr_values, nan=0.0, posinf=0.0, neginf=0.0)
 
     def _precalc_signals(
-        self, o: np.ndarray, c: np.ndarray, lows: np.ndarray, v: np.ndarray, atr_norm: np.ndarray
+        self,
+        *,
+        o: np.ndarray,
+        c: np.ndarray,
+        lows: np.ndarray,
+        v: np.ndarray,
+        atr_norm: np.ndarray,
+        ts: Sequence[int] | np.ndarray,
     ) -> np.ndarray:
         """Precompute sweep entry signals following the V4 heuristic."""
 
@@ -211,6 +233,12 @@ class OpeningSweepV4(Strategy):
         signals = np.zeros(n, dtype=np.int8)
         if n == 0:
             return signals
+
+        idx_local = pd.to_datetime(np.asarray(ts), unit="ns", utc=True).tz_convert(
+            self.params.trading_timezone
+        )
+        minutes_in_day = idx_local.hour * 60 + idx_local.minute
+        session_mask = self._session_filter(minutes_in_day)
 
         atr_threshold = float(np.quantile(atr_norm, self.params.atr_percentile))
         vol_threshold = float(np.quantile(v, self.params.volume_percentile))
@@ -235,4 +263,45 @@ class OpeningSweepV4(Strategy):
 
             signals[i] = 1
 
+        signals = signals * session_mask.astype(np.int8)
+        signals, daily_counts = self._apply_daily_limits(
+            signals=signals, idx_local=idx_local, max_horizon=self.params.max_horizon
+        )
+        self._session_mask = session_mask
+        self.daily_entry_counts = daily_counts
+
         return signals
+
+    def _session_filter(self, minutes_in_day: np.ndarray) -> np.ndarray:
+        if minutes_in_day.size == 0:
+            return np.zeros(0, dtype=bool)
+
+        mask = np.zeros_like(minutes_in_day, dtype=bool)
+        for start, end in self.params.session_windows:
+            mask |= (minutes_in_day >= start) & (minutes_in_day <= end)
+        return mask
+
+    def _apply_daily_limits(
+        self, *, signals: np.ndarray, idx_local: pd.DatetimeIndex, max_horizon: int
+    ) -> tuple[np.ndarray, Dict[str, int]]:
+        filtered = np.zeros_like(signals, dtype=np.int8)
+        flat_until = -1
+        daily_counts: Dict[str, int] = {}
+
+        for i, signal in enumerate(signals):
+            if signal != 1:
+                continue
+
+            if i <= flat_until:
+                continue
+
+            day_str = str(idx_local[i].date())
+            count_today = daily_counts.get(day_str, 0)
+            if self.params.max_trades_per_day > 0 and count_today >= self.params.max_trades_per_day:
+                continue
+
+            filtered[i] = 1
+            daily_counts[day_str] = count_today + 1
+            flat_until = i + max(max_horizon, 1) - 1
+
+        return filtered, daily_counts

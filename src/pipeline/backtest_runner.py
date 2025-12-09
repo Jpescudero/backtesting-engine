@@ -20,6 +20,7 @@ from src.pipeline.reporting import (
     generate_main_plots,
     generate_report_files,
     generate_trade_plots,
+    _strategy_suffix,
 )
 from src.strategies.microstructure_reversal import StrategyMicrostructureReversal
 from src.strategies.microstructure_sweep import StrategyMicrostructureSweep, SweepParams
@@ -164,6 +165,7 @@ class BacktestArtifacts:
     trades_df: object
     equity_stats: Dict
     trade_stats: Dict
+    trade_level_stats: Dict
     timings: Dict[str, float]
     reports: BacktestReports
 
@@ -266,7 +268,7 @@ def run_single_backtest(config: BacktestRunConfig) -> BacktestArtifacts:
         )
 
     timings: Dict[str, float] = {}
-    reports_dir = config.reports_dir or (REPORTS_DIR / config.symbol).resolve()
+    base_reports_dir = config.reports_dir or (REPORTS_DIR / config.symbol).resolve()
 
     logger.info("Capital inicial configurado: %s", config.backtest_config.initial_cash)
 
@@ -369,6 +371,8 @@ def run_single_backtest(config: BacktestRunConfig) -> BacktestArtifacts:
     strategy_label = _effective_strategy_name(
         config.strategy_name, getattr(strat_res, "meta", None)
     )
+    reports_dir = (base_reports_dir / _strategy_suffix(strategy_label)).resolve()
+    reports_dir.mkdir(parents=True, exist_ok=True)
     n_signals = int((strat_res.signals != 0).sum())
     logger.info("Estrategia %s: %s señales generadas", strategy_label, n_signals)
 
@@ -406,11 +410,17 @@ def run_single_backtest(config: BacktestRunConfig) -> BacktestArtifacts:
         trades_df = trades_to_dataframe(result, data)
 
     with timed_step(timings, "06_metricas"):
-        equity_series, trades_df, equity_stats, trade_stats = compute_analytics(
-            result, data, equity_series=equity_series, trades_df=trades_df
-        )
+        (
+            equity_series,
+            trades_df,
+            equity_stats,
+            trade_stats,
+            level_stats,
+        ) = compute_analytics(result, data, equity_series=equity_series, trades_df=trades_df)
 
-    report_paths = BacktestReports(equity_stats=equity_stats, trade_stats=trade_stats)
+    report_paths = BacktestReports(
+        equity_stats=equity_stats, trade_stats=trade_stats, trade_level_stats=level_stats
+    )
 
     snapshot_path: Optional[Path] = None
     if result.snapshots:
@@ -426,7 +436,7 @@ def run_single_backtest(config: BacktestRunConfig) -> BacktestArtifacts:
     _save_run_metadata(meta_path, run_meta)
     if config.generate_report_files:
         with timed_step(timings, "07_reportes_excel_json"):
-            excel_path, json_path = generate_report_files(
+            excel_path, json_path, levels_path = generate_report_files(
                 reports_dir=reports_dir,
                 symbol=config.symbol,
                 strategy_name=strategy_label,
@@ -434,6 +444,7 @@ def run_single_backtest(config: BacktestRunConfig) -> BacktestArtifacts:
                 trades_df=trades_df,
                 equity_stats=equity_stats,
                 trade_stats=trade_stats,
+                level_stats=level_stats,
                 meta={
                     **getattr(strat_res, "meta", {}),
                     "run_metadata": run_meta,
@@ -441,6 +452,7 @@ def run_single_backtest(config: BacktestRunConfig) -> BacktestArtifacts:
             )
         report_paths.excel_path = excel_path
         report_paths.json_path = json_path
+        report_paths.levels_report_path = levels_path
     else:
         timings["07_reportes_excel_json"] = 0.0
 
@@ -476,6 +488,7 @@ def run_single_backtest(config: BacktestRunConfig) -> BacktestArtifacts:
         trades_df=trades_df,
         equity_stats=equity_stats,
         trade_stats=trade_stats,
+        trade_level_stats=level_stats,
         timings=timings,
         reports=report_paths,
     )

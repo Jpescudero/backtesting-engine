@@ -187,3 +187,75 @@ def trades_metrics(trades: pd.DataFrame) -> Dict[str, Any]:
         "avg_holding_bars": avg_holding_bars,
         "exit_reason_counts": reason_counts,
     }
+
+
+def trade_level_stats(trades: pd.DataFrame) -> Dict[str, Any]:
+    """Estadísticas sobre la amplitud de SL/TP y frecuencia de break-even."""
+
+    if trades is None or trades.empty:
+        return {
+            "sl_distance_pct": {},
+            "tp_distance_pct": {},
+            "sl_distance_abs": {},
+            "tp_distance_abs": {},
+            "breakeven_count": 0,
+            "breakeven_rate": 0.0,
+        }
+
+    entry_price = trades["entry_price"].astype(float)
+    side = np.sign(trades.get("qty", 1.0)).replace(0, 1.0)
+
+    sl_level = trades.get("stop_loss")
+    tp_level = trades.get("take_profit")
+
+    sl_distance = _signed_distance(entry_price, sl_level, side)
+    tp_distance = _signed_distance(tp_level, entry_price, side)
+
+    stats_sl_abs = _distance_stats(sl_distance)
+    stats_tp_abs = _distance_stats(tp_distance)
+
+    stats_sl_pct = _distance_stats(sl_distance / entry_price)
+    stats_tp_pct = _distance_stats(tp_distance / entry_price)
+
+    pnl = trades.get("pnl", pd.Series(dtype=float)).astype(float)
+    tolerance = (entry_price * 1e-4).abs()
+    breakeven_mask = pnl.abs() <= tolerance
+    breakeven_count = int(breakeven_mask.sum())
+    breakeven_rate = float(breakeven_count / len(trades)) if len(trades) else 0.0
+
+    return {
+        "sl_distance_pct": stats_sl_pct,
+        "tp_distance_pct": stats_tp_pct,
+        "sl_distance_abs": stats_sl_abs,
+        "tp_distance_abs": stats_tp_abs,
+        "breakeven_count": breakeven_count,
+        "breakeven_rate": breakeven_rate,
+    }
+
+
+def _signed_distance(
+    upper: pd.Series | Any, lower: pd.Series | Any, side: pd.Series | Any
+) -> pd.Series:
+    upper_series = pd.Series(upper, dtype=float)
+    lower_series = pd.Series(lower, dtype=float)
+    side_series = pd.Series(side, dtype=float).replace(0, 1.0)
+
+    distance = (upper_series - lower_series) * side_series
+    return distance
+
+
+def _distance_stats(distance: pd.Series) -> Dict[str, float]:
+    distance = pd.Series(distance, dtype=float).replace([np.inf, -np.inf], np.nan).dropna()
+    if distance.empty:
+        return {}
+
+    return {
+        "mean": float(distance.mean()),
+        "median": float(distance.median()),
+        "min": float(distance.min()),
+        "max": float(distance.max()),
+        "p25": float(distance.quantile(0.25)),
+        "p75": float(distance.quantile(0.75)),
+        "std": float(distance.std(ddof=1)) if len(distance) > 1 else 0.0,
+        "count": int(len(distance)),
+    }

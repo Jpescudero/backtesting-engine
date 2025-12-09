@@ -130,6 +130,7 @@ def build_backtest_summary(
     strategy_name: str,
     equity_stats: Mapping[str, Any],
     trade_stats: Mapping[str, Any],
+    level_stats: Mapping[str, Any],
     meta: Optional[Mapping[str, Any]] = None,
 ) -> Dict[str, Any]:
     """Construye un diccionario resumen del backtest (ligero)."""
@@ -139,6 +140,7 @@ def build_backtest_summary(
         "meta_summary": _meta_summary(meta),
         "equity_stats": _to_serializable(equity_stats),
         "trade_stats": _to_serializable(trade_stats),
+        "trade_level_stats": _to_serializable(level_stats),
     }
 
 
@@ -236,6 +238,7 @@ def save_backtest_summary_to_excel(
     trades_df: pd.DataFrame,
     equity_stats: Mapping[str, Any],
     trade_stats: Mapping[str, Any],
+    level_stats: Mapping[str, Any],
     meta: Optional[Mapping[str, Any]] = None,
 ) -> Tuple[Path, Path]:
     """
@@ -261,6 +264,7 @@ def save_backtest_summary_to_excel(
         strategy_name=strategy_name,
         equity_stats=equity_stats,
         trade_stats=trade_stats,
+        level_stats=level_stats,
         meta=meta,
     )
 
@@ -278,6 +282,9 @@ def save_backtest_summary_to_excel(
     )
     tr_stats_df = pd.DataFrame(
         [{"metric": k, "value": _to_serializable(v)} for k, v in trade_stats.items()]
+    )
+    level_stats_df = pd.DataFrame(
+        [{"metric": k, "value": _to_serializable(v)} for k, v in level_stats.items()]
     )
 
     meta_items = list((meta or {}).items())
@@ -310,6 +317,7 @@ def save_backtest_summary_to_excel(
         trades_df_excel.to_excel(writer, sheet_name="trades", index=False)
         eq_stats_df.to_excel(writer, sheet_name="equity_stats", index=False)
         tr_stats_df.to_excel(writer, sheet_name="trade_stats", index=False)
+        level_stats_df.to_excel(writer, sheet_name="levels_stats", index=False)
         meta_df.to_excel(writer, sheet_name="meta", index=False)
 
     return excel_path, json_path
