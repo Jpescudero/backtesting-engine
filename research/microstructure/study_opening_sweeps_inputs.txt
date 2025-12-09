@@ -2,7 +2,7 @@
 # Usa pares clave=valor. start_year y end_year son obligatorios.
 # index es el ticker local del subyacente (por defecto NDXm).
 index=NDXm
-start_year=2021
+start_year=2018
 end_year=2022
 horizon=15
 timezone=Europe/Madrid
