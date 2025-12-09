@@ -1,203 +1,150 @@
-"""V1 — Opening Sweep study using forward returns only."""
-
-# ruff: noqa: E402, I001
+"""
+V1 — Basic Opening Sweep Study
+------------------------------
+Baseline version using forward returns and StrategyBarridaApertura.
+Compatible with optimizer via preload_data() and run_with_params().
+"""
 
 from __future__ import annotations
-
 import sys
 from dataclasses import dataclass
-from datetime import datetime
 from pathlib import Path
+from typing import Iterable, Tuple
 
-REPO_ROOT = Path(__file__).resolve().parents[2]
-if str(REPO_ROOT) not in sys.path:
-    sys.path.insert(0, str(REPO_ROOT))
+import numpy as np
+import pandas as pd
 
-import numpy as np  # noqa: E402
-import pandas as pd  # noqa: E402
-from research.microstructure.session_loader import (  # noqa: E402
-    SessionLoadConfig,
-    load_sessions,
-)
+from src.data.feeds import NPZOHLCVFeed, OHLCVArrays
+from src.config.paths import REPORTS_DIR, ensure_directories_exist
+from src.strategies.barrida_apertura import StrategyBarridaApertura
 
-from src.config.paths import REPORTS_DIR, ensure_directories_exist  # noqa: E402
+
+SessionWindow = Tuple[str, str]
 
 
 @dataclass
-class SweepStudyConfigV1:
-    """Configuration for the baseline opening sweep study."""
-
+class SweepStudyConfig:
     index: str
     start_year: int
     end_year: int
+    horizon: int
     timezone: str
-    min_wick_factor: float = 1.2
-    min_atr_percentile: float = 0.2
-    require_volume_percentile: float = 0.4
-
-
-WINDOWS: tuple[tuple[str, str], ...] = (("08:55", "10:00"), ("14:55", "16:00"))
 
 
 # ============================================================
-# DATA PREPARATION
+# DATA LOADING
 # ============================================================
 
+def load_index_sessions(symbol: str, years: Iterable[int], windows, tz: str):
+    feed = NPZOHLCVFeed(symbol=symbol, timeframe="1m")
+    data = feed.load_years(list(years))
+    idx_utc = pd.to_datetime(data.ts, unit="ns", utc=True)
 
-def _base_df(cfg: SweepStudyConfigV1) -> pd.DataFrame:
-    years = list(range(cfg.start_year, cfg.end_year + 1))
-    df, _ = load_sessions(
-        SessionLoadConfig(
-            symbol=cfg.index,
-            years=years,
-            windows=WINDOWS,
-            timezone=cfg.timezone,
-        )
-    )
-    return df
-
-
-# ============================================================
-# SIGNAL DETECTION
-# ============================================================
-
-
-def detect_sweep_signals(df: pd.DataFrame, cfg: SweepStudyConfigV1) -> pd.Series:
-    """Identify opening sweep entries based on wick prominence and filters."""
-
-    open_, high, low, close = (
-        df.open.values,
-        df.high.values,
-        df.low.values,
-        df.close.values,
-    )
-    volume = df.volume.values
-
-    hl = high - low
-    hc = np.abs(high - np.roll(close, 1))
-    lc = np.abs(low - np.roll(close, 1))
-    tr = np.maximum(hl, np.maximum(hc, lc))
-
-    atr = pd.Series(tr).rolling(20).mean().bfill()
-    atr_norm = atr / atr.rolling(1000).mean()
-    atr_norm = atr_norm.replace([np.inf, -np.inf], np.nan).bfill().ffill()
-
-    atr_thr = atr_norm.quantile(cfg.min_atr_percentile)
-    vol_thr = np.quantile(volume, cfg.require_volume_percentile)
-
-    signals = np.zeros(len(df), dtype=np.int8)
-
-    for i in range(2, len(df)):
-        body = abs(close[i] - open_[i])
-        wick_down = (open_[i] - low[i]) if close[i] >= open_[i] else (close[i] - low[i])
-        wick_factor = wick_down / (body + 1e-9)
-
-        if wick_factor < cfg.min_wick_factor:
-            continue
-        if volume[i] < vol_thr:
-            continue
-        if atr_norm.iloc[i] < atr_thr:
-            continue
-        if not ((close[i - 1] < open_[i - 1]) and (close[i - 2] < open_[i - 2])):
-            continue
-
-        signals[i] = 1
-
-    return pd.Series(signals, index=df.index)
-
-
-# ============================================================
-# FORWARD RETURNS
-# ============================================================
-
-
-def compute_forward_returns(df: pd.DataFrame, horizon: int = 20) -> pd.Series:
-    """Compute fixed-horizon forward returns."""
-
-    forward = np.empty(len(df))
-    forward[:] = np.nan
-
-    for i in range(len(df)):
-        if i + horizon < len(df):
-            forward[i] = df.close.iloc[i + horizon] / df.close.iloc[i] - 1
-
-    return pd.Series(forward, index=df.index)
-
-
-# ============================================================
-# REPORTING
-# ============================================================
-
-
-def _report_folder(name: str) -> Path:
-    ensure_directories_exist()
-    root = REPORTS_DIR / "research" / "microstructure" / "reports" / name
-    timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
-    out = root / timestamp
-    out.mkdir(parents=True, exist_ok=True)
-    return out
-
-
-def _save_trades(trades: pd.Series, outdir: Path) -> None:
-    trades.to_csv(outdir / "trades.csv", header=True)
-    summary = pd.DataFrame(
+    df = pd.DataFrame(
         {
-            "count": [len(trades)],
-            "mean": [trades.mean()],
-            "std": [trades.std()],
-            "winrate": [(trades > 0).mean()],
-        }
+            "open": data.o,
+            "high": data.h,
+            "low": data.low,
+            "close": data.c,
+            "volume": data.v,
+        },
+        index=idx_utc,
+    ).sort_index()
+
+    idx_local = df.index.tz_convert(tz)
+    minutes = idx_local.hour * 60 + idx_local.minute
+    mask = np.zeros(len(df), dtype=bool)
+
+    for s, e in windows:
+        sh, sm = map(int, s.split(":"))
+        eh, em = map(int, e.split(":"))
+        smin = sh * 60 + sm
+        emin = eh * 60 + em
+        mask |= (minutes >= smin) & (minutes <= emin)
+
+    return df.loc[mask], feed.base_dir
+
+
+def to_ohlcv_arrays(df):
+    ts = df.index.view("int64")
+    return OHLCVArrays(
+        ts=ts,
+        o=df["open"].to_numpy(),
+        h=df["high"].to_numpy(),
+        low=df["low"].to_numpy(),
+        c=df["close"].to_numpy(),
+        v=df["volume"].to_numpy(),
     )
-    summary.to_csv(outdir / "summary.csv", index=False)
 
 
-# ============================================================
-# MAIN EXECUTION
-# ============================================================
-
-
-def main() -> None:
-    cfg = SweepStudyConfigV1("NDXm", 2018, 2022, "Europe/Madrid")
-    df = _base_df(cfg)
-
-    signals = detect_sweep_signals(df, cfg)
-    entries = signals == 1
-
-    fwd = compute_forward_returns(df)
-    trades = fwd[entries].dropna().rename("fwd_return")
-
-    outdir = _report_folder("v1")
-    _save_trades(trades, outdir)
-    print(f"Saved V1 trades to {outdir}")
+def compute_forward_returns(close: pd.Series, horizon: int):
+    return close.shift(-horizon) / close - 1.0
 
 
 # ============================================================
 # OPTIMIZER API
 # ============================================================
 
+def preload_data():
+    df, _ = load_index_sessions(
+        "NDXm",
+        [2018, 2019, 2020, 2021, 2022],
+        (("08:55", "10:00"), ("14:55", "16:00")),
+        "Europe/Madrid",
+    )
+    return df, None
 
-def preload_data() -> pd.DataFrame:
-    cfg = SweepStudyConfigV1("NDXm", 2018, 2022, "Europe/Madrid")
-    return _base_df(cfg)
+
+def run_with_params(df, context, params):
+    strat = StrategyBarridaApertura(
+        wick_factor=params.get("wick_factor", 1.5),
+        atr_percentile=params.get("atr_percentile", 0.4),
+        volume_percentile=params.get("volume_percentile", 0.6),
+    )
+
+    arrays = to_ohlcv_arrays(df)
+    signals = strat.generate_signals(arrays).signals
+    sig_series = pd.Series(signals, index=df.index)
+
+    fwd = compute_forward_returns(df["close"], horizon=15)
+    trades = fwd[sig_series == 1].dropna().rename("fwd_return")
+
+    return trades.to_frame()
 
 
-def run_with_params(df: pd.DataFrame, params: dict[str, float]) -> pd.DataFrame:
-    cfg = SweepStudyConfigV1(
+# ============================================================
+# MAIN (for standalone analysis)
+# ============================================================
+
+def main():
+    cfg = SweepStudyConfig(
         index="NDXm",
         start_year=2018,
         end_year=2022,
+        horizon=15,
         timezone="Europe/Madrid",
-        min_wick_factor=params.get("wick_factor", 1.2),
-        min_atr_percentile=params.get("atr_percentile", 0.2),
-        require_volume_percentile=params.get("volume_percentile", 0.4),
     )
 
-    signals = detect_sweep_signals(df, cfg)
-    entries = signals == 1
+    years = list(range(cfg.start_year, cfg.end_year + 1))
+    windows = (("08:55", "10:00"), ("14:55", "16:00"))
 
-    fwd = compute_forward_returns(df)
-    trades = fwd[entries].dropna().rename("fwd_return")
-    return trades.to_frame()
+    df, _ = load_index_sessions(cfg.index, years, windows, cfg.timezone)
+    arrays = to_ohlcv_arrays(df)
+
+    strat = StrategyBarridaApertura()
+    signals = strat.generate_signals(arrays).signals
+    sig_series = pd.Series(signals, index=df.index)
+
+    fwd = compute_forward_returns(df["close"], cfg.horizon)
+    trades = fwd[sig_series == 1].dropna()
+
+    out = REPORTS_DIR / "research" / "microstructure" / "v1"
+    out.mkdir(parents=True, exist_ok=True)
+    trades.rename("fwd_return").to_csv(out / "opening_sweeps_v1_trades.csv")
+
+    print("Signals:", (sig_series == 1).sum())
+    print("Mean return:", trades.mean())
+    print("Winrate:", (trades > 0).mean())
 
 
 if __name__ == "__main__":
