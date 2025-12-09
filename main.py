@@ -29,12 +29,12 @@ from src.visualization.trades_dashboard import build_trades_dashboard
 
 
 def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Ejecuta un backtest Microstructure Reversal")
+    parser = argparse.ArgumentParser(description="Ejecuta un backtest")
     parser.add_argument("--symbol", default="NDXm", help="Símbolo o índice a backtestear")
     parser.add_argument("--timeframe", default="1m", help="Timeframe del feed NPZ")
     parser.add_argument(
         "--strategy",
-        default="microstructure_reversal",
+        default="opening_sweep_v4",
         choices=["microstructure_reversal", "microstructure_sweep", "opening_sweep_v4"],
         help="Estrategia a ejecutar",
     )
