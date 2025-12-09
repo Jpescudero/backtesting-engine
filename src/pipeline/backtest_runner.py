@@ -23,6 +23,7 @@ from src.pipeline.reporting import (
 )
 from src.strategies.microstructure_reversal import StrategyMicrostructureReversal
 from src.strategies.microstructure_sweep import StrategyMicrostructureSweep, SweepParams
+from src.strategies.opening_sweep_v4 import OpeningSweepV4, OpeningSweepV4Params
 from src.utils.seeding import seed_everything
 from src.utils.timing import timed_step
 
@@ -114,7 +115,7 @@ class StrategyParams:
     structure_break_lookback: int = 3
 
 
-StrategyParamsType = Union[StrategyParams, SweepParams]
+StrategyParamsType = Union[StrategyParams, SweepParams, OpeningSweepV4Params]
 
 
 @dataclass
@@ -183,6 +184,14 @@ def _params_mapping(params: object) -> Dict[str, Any]:
 def _coerce_strategy_params(
     params: StrategyParamsType | Mapping[str, object],
     *,
+    strategy_name: Literal["opening_sweep_v4"],
+) -> OpeningSweepV4Params: ...
+
+
+@overload
+def _coerce_strategy_params(
+    params: StrategyParamsType | Mapping[str, object],
+    *,
     strategy_name: Literal["microstructure_sweep"],
 ) -> SweepParams: ...
 
@@ -205,6 +214,10 @@ def _coerce_strategy_params(
     params: StrategyParamsType | Mapping[str, object], *, strategy_name: str
 ) -> StrategyParamsType:
     params_dict: Dict[str, Any] = _params_mapping(params)
+    if strategy_name == "opening_sweep_v4":
+        if isinstance(params, OpeningSweepV4Params):
+            return params
+        return OpeningSweepV4Params(**params_dict)
     if strategy_name == "microstructure_sweep":
         if isinstance(params, SweepParams):
             return params
@@ -242,9 +255,14 @@ def run_single_backtest(config: BacktestRunConfig) -> BacktestArtifacts:
     if config.resume_snapshot:
         resume_snapshot = _load_snapshot(config.resume_snapshot)
 
-    if config.strategy_name not in {"microstructure_reversal", "microstructure_sweep"}:
+    if config.strategy_name not in {
+        "microstructure_reversal",
+        "microstructure_sweep",
+        "opening_sweep_v4",
+    }:
         raise ValueError(
-            "Solo se soportan las estrategias 'microstructure_reversal' y 'microstructure_sweep'"
+            "Solo se soportan las estrategias 'microstructure_reversal', "
+            "'microstructure_sweep' y 'opening_sweep_v4'"
         )
 
     timings: Dict[str, float] = {}
@@ -289,7 +307,7 @@ def run_single_backtest(config: BacktestRunConfig) -> BacktestArtifacts:
                 atr_data = atr_feed.load_all()
 
     with timed_step(timings, "03_generar_senales_estrategia"):
-        strategy: StrategyMicrostructureReversal | StrategyMicrostructureSweep
+        strategy: StrategyMicrostructureReversal | StrategyMicrostructureSweep | OpeningSweepV4
         if config.strategy_name == "microstructure_reversal":
             assert isinstance(strategy_params, StrategyParams)
             strategy = StrategyMicrostructureReversal(
@@ -307,7 +325,7 @@ def run_single_backtest(config: BacktestRunConfig) -> BacktestArtifacts:
                 shift_body_atr=strategy_params.shift_body_atr,
                 structure_break_lookback=strategy_params.structure_break_lookback,
             )
-        else:
+        elif config.strategy_name == "microstructure_sweep":
             assert isinstance(strategy_params, SweepParams)
             strategy = StrategyMicrostructureSweep(
                 ema_short=strategy_params.ema_short,
@@ -332,15 +350,22 @@ def run_single_backtest(config: BacktestRunConfig) -> BacktestArtifacts:
                 atr_stop_mult=strategy_params.atr_stop_mult,
                 rr_multiple=strategy_params.rr_multiple,
             )
+        else:
+            assert isinstance(strategy_params, OpeningSweepV4Params)
+            strategy = OpeningSweepV4(config=strategy_params)
 
-        atr_override = None
-        if atr_data is not None:
-            atr_override = strategy.compute_lower_timeframe_atr(
-                lower_data=atr_data,
-                target_ts=data.ts,
-            )
+        if config.strategy_name == "opening_sweep_v4":
+            config.backtest_config.max_bars_in_trade = strategy_params.max_horizon
+            strat_res = strategy.generate_strategy_result(data)
+        else:
+            atr_override = None
+            if atr_data is not None:
+                atr_override = strategy.compute_lower_timeframe_atr(
+                    lower_data=atr_data,
+                    target_ts=data.ts,
+                )
 
-        strat_res = strategy.generate_signals(data, external_atr=atr_override)
+            strat_res = strategy.generate_signals(data, external_atr=atr_override)
     strategy_label = _effective_strategy_name(
         config.strategy_name, getattr(strat_res, "meta", None)
     )
@@ -466,6 +491,8 @@ def load_run_config_from_metadata(path: Path | str) -> BacktestRunConfig:
     strategy_params: StrategyParamsType
     if strategy_name == "microstructure_sweep":
         strategy_params = SweepParams(**strat_params_dict)
+    elif strategy_name == "opening_sweep_v4":
+        strategy_params = OpeningSweepV4Params(**strat_params_dict)
     else:
         strategy_params = StrategyParams(**strat_params_dict)
 

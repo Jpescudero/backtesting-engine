@@ -24,6 +24,7 @@ from src.pipeline.backtest_runner import (
     run_single_backtest,
 )
 from src.strategies.microstructure_sweep import SweepParams
+from src.strategies.opening_sweep_v4 import OpeningSweepV4Params
 from src.visualization.trades_dashboard import build_trades_dashboard
 
 
@@ -34,7 +35,7 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--strategy",
         default="microstructure_reversal",
-        choices=["microstructure_reversal", "microstructure_sweep"],
+        choices=["microstructure_reversal", "microstructure_sweep", "opening_sweep_v4"],
         help="Estrategia a ejecutar",
     )
     parser.add_argument(
@@ -94,6 +95,8 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         default=3,
         help="Ventana de ruptura de microestructura",
     )
+
+    opening_defaults = OpeningSweepV4Params()
 
     # Parámetros Microstructure Sweep
     parser.add_argument(
@@ -190,6 +193,49 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         type=float,
         default=SweepParams.rr_multiple,
         help="Multiplicador RR para TP",
+    )
+    # Parámetros Opening Sweep V4
+    parser.add_argument(
+        "--wick-factor",
+        type=float,
+        default=opening_defaults.wick_factor,
+        help="Mínima relación mecha/cuerpo para validar la barrida",
+    )
+    parser.add_argument(
+        "--atr-percentile",
+        type=float,
+        default=opening_defaults.atr_percentile,
+        help="Percentil de ATR normalizado requerido para operar",
+    )
+    parser.add_argument(
+        "--volume-percentile",
+        type=float,
+        default=opening_defaults.volume_percentile,
+        help="Percentil de volumen intradía requerido para operar",
+    )
+    parser.add_argument(
+        "--sl-buffer-atr",
+        type=float,
+        default=opening_defaults.sl_buffer_atr,
+        help="Buffer ATR absoluto usado en el stop loss",
+    )
+    parser.add_argument(
+        "--sl-buffer-relative",
+        type=float,
+        default=opening_defaults.sl_buffer_relative,
+        help="Buffer relativo (ATR normalizado) usado en el stop loss",
+    )
+    parser.add_argument(
+        "--tp-multiplier",
+        type=float,
+        default=opening_defaults.tp_multiplier,
+        help="Multiplicador RR para calcular el take profit",
+    )
+    parser.add_argument(
+        "--max-horizon",
+        type=int,
+        default=opening_defaults.max_horizon,
+        help="Máximo de barras a mantener la posición en Opening Sweep",
     )
     parser.add_argument(
         "--config-file",
@@ -323,8 +369,8 @@ def print_timings(timings: dict) -> None:
 
 def _print_run_context(run_config: BacktestRunConfig) -> None:
     cfg = run_config.backtest_config
-    atr_timeframe = run_config.strategy_params.atr_timeframe
-    atr_period = run_config.strategy_params.atr_timeframe_period
+    atr_timeframe = getattr(run_config.strategy_params, "atr_timeframe", "n/a")
+    atr_period = getattr(run_config.strategy_params, "atr_timeframe_period", "n/a")
     if run_config.strategy_name == "microstructure_sweep":
         params_summary = " | ".join(
             [
@@ -335,6 +381,18 @@ def _print_run_context(run_config: BacktestRunConfig) -> None:
                 f"wick≥{run_config.strategy_params.min_lower_wick_body_ratio}×cuerpo",
                 f"body conf ≥{run_config.strategy_params.confirm_body_atr} ATR",
                 f"RR {run_config.strategy_params.rr_multiple}x",
+            ]
+        )
+    elif run_config.strategy_name == "opening_sweep_v4":
+        params_summary = " | ".join(
+            [
+                f"wick≥{run_config.strategy_params.wick_factor}×cuerpo",
+                f"ATR pct≥{run_config.strategy_params.atr_percentile}",
+                f"Vol pct≥{run_config.strategy_params.volume_percentile}",
+                f"SL buff {run_config.strategy_params.sl_buffer_atr}+"
+                f"{run_config.strategy_params.sl_buffer_relative}×ATRnorm",
+                f"TP×{run_config.strategy_params.tp_multiplier}",
+                f"max {run_config.strategy_params.max_horizon} barras",
             ]
         )
     else:
@@ -672,6 +730,59 @@ def main(argv: Iterable[str] | None = None) -> None:
                 float,
             ),
         )
+    elif strategy_name == "opening_sweep_v4":
+        opening_defaults = OpeningSweepV4Params()
+        strategy_params = OpeningSweepV4Params(
+            wick_factor=_get_setting(
+                args.wick_factor,
+                config_file_values,
+                "wick_factor",
+                opening_defaults.wick_factor,
+                float,
+            ),
+            atr_percentile=_get_setting(
+                args.atr_percentile,
+                config_file_values,
+                "atr_percentile",
+                opening_defaults.atr_percentile,
+                float,
+            ),
+            volume_percentile=_get_setting(
+                args.volume_percentile,
+                config_file_values,
+                "volume_percentile",
+                opening_defaults.volume_percentile,
+                float,
+            ),
+            sl_buffer_atr=_get_setting(
+                args.sl_buffer_atr,
+                config_file_values,
+                "sl_buffer_atr",
+                opening_defaults.sl_buffer_atr,
+                float,
+            ),
+            sl_buffer_relative=_get_setting(
+                args.sl_buffer_relative,
+                config_file_values,
+                "sl_buffer_relative",
+                opening_defaults.sl_buffer_relative,
+                float,
+            ),
+            tp_multiplier=_get_setting(
+                args.tp_multiplier,
+                config_file_values,
+                "tp_multiplier",
+                opening_defaults.tp_multiplier,
+                float,
+            ),
+            max_horizon=_get_setting(
+                args.max_horizon,
+                config_file_values,
+                "max_horizon",
+                opening_defaults.max_horizon,
+                int,
+            ),
+        )
     else:
         strategy_params = StrategyParams(
             ema_short=args.ema_short,
@@ -701,6 +812,11 @@ def main(argv: Iterable[str] | None = None) -> None:
             tp_pct=args.tp_pct,
             max_bars_in_trade=args.max_bars,
             entry_threshold=args.entry_threshold,
+        )
+
+    if strategy_name == "opening_sweep_v4":
+        backtest_config.max_bars_in_trade = getattr(
+            strategy_params, "max_horizon", backtest_config.max_bars_in_trade
         )
 
     seed_value = args.seed if args.seed is not None else (meta_config.seed if meta_config else None)
