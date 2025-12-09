@@ -30,69 +30,69 @@ from src.visualization.trades_dashboard import build_trades_dashboard
 
 def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Ejecuta un backtest")
-    parser.add_argument("--symbol", default="NDXm", help="Símbolo o índice a backtestear")
-    parser.add_argument("--timeframe", default="1m", help="Timeframe del feed NPZ")
+    parser.add_argument("--symbol", default=None, help="Símbolo o índice a backtestear")
+    parser.add_argument("--timeframe", default=None, help="Timeframe del feed NPZ")
     parser.add_argument(
         "--strategy",
-        default="opening_sweep_v4",
+        default=None,
         choices=["microstructure_reversal", "microstructure_sweep", "opening_sweep_v4"],
         help="Estrategia a ejecutar",
     )
     parser.add_argument(
-        "--ema-short", type=int, default=20, help="EMA corta para filtro de tendencia"
+        "--ema-short", type=int, default=None, help="EMA corta para filtro de tendencia"
     )
     parser.add_argument(
-        "--ema-long", type=int, default=50, help="EMA larga para filtro de tendencia"
+        "--ema-long", type=int, default=None, help="EMA larga para filtro de tendencia"
     )
     parser.add_argument(
-        "--atr-period", type=int, default=20, help="Periodo ATR para normalizar rangos"
+        "--atr-period", type=int, default=None, help="Periodo ATR para normalizar rangos"
     )
     parser.add_argument(
         "--atr-timeframe",
         type=str,
-        default="1m",
+        default=None,
         help="Timeframe dedicado para el cálculo del ATR (p.ej. 1m)",
     )
     parser.add_argument(
         "--atr-timeframe-period",
         type=int,
-        default=10,
+        default=None,
         help="Periodo ATR a usar en el timeframe dedicado",
     )
     parser.add_argument(
-        "--min-pullback-atr", type=float, default=0.3, help="Retroceso mínimo en ATR"
+        "--min-pullback-atr", type=float, default=None, help="Retroceso mínimo en ATR"
     )
     parser.add_argument(
-        "--max-pullback-atr", type=float, default=1.3, help="Retroceso máximo en ATR"
+        "--max-pullback-atr", type=float, default=None, help="Retroceso máximo en ATR"
     )
     parser.add_argument(
-        "--max-pullback-bars", type=int, default=12, help="Velas máximas del pullback"
+        "--max-pullback-bars", type=int, default=None, help="Velas máximas del pullback"
     )
     parser.add_argument(
         "--exhaustion-close-min",
         type=float,
-        default=0.35,
+        default=None,
         help="Posición mínima del cierre de la vela de agotamiento",
     )
     parser.add_argument(
         "--exhaustion-close-max",
         type=float,
-        default=0.65,
+        default=None,
         help="Posición máxima del cierre de la vela de agotamiento",
     )
     parser.add_argument(
         "--exhaustion-body-max-ratio",
         type=float,
-        default=0.5,
+        default=None,
         help="Relación máxima cuerpo/rango para la vela de agotamiento",
     )
     parser.add_argument(
-        "--shift-body-atr", type=float, default=0.45, help="Mínimo cuerpo de la vela shift en ATR"
+        "--shift-body-atr", type=float, default=None, help="Mínimo cuerpo de la vela shift en ATR"
     )
     parser.add_argument(
         "--structure-break-lookback",
         type=int,
-        default=3,
+        default=None,
         help="Ventana de ruptura de microestructura",
     )
 
@@ -102,31 +102,31 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--sweep-lookback",
         type=int,
-        default=SweepParams.sweep_lookback,
+        default=None,
         help="Ventana de lookback para mínimos previos",
     )
     parser.add_argument(
         "--min-sweep-break-atr",
         type=float,
-        default=SweepParams.min_sweep_break_atr,
+        default=None,
         help="Mínima ruptura del mínimo previo en ATR",
     )
     parser.add_argument(
         "--min-lower-wick-body-ratio",
         type=float,
-        default=SweepParams.min_lower_wick_body_ratio,
+        default=None,
         help="Relación mínima mecha/cuerpo",
     )
     parser.add_argument(
         "--min-sweep-range-atr",
         type=float,
-        default=SweepParams.min_sweep_range_atr,
+        default=None,
         help="Rango mínimo de la vela de barrida en ATR",
     )
     parser.add_argument(
         "--confirm-body-atr",
         type=float,
-        default=SweepParams.confirm_body_atr,
+        default=None,
         help="Cuerpo mínimo de la vela de confirmación en ATR",
     )
     parser.add_argument(
@@ -135,26 +135,26 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         dest="confirm_close_above_mid",
         help="Permitir cierres por debajo de la mitad de la vela de barrida",
     )
-    parser.set_defaults(confirm_close_above_mid=SweepParams.confirm_close_above_mid)
+    parser.set_defaults(confirm_close_above_mid=None)
     parser.add_argument(
         "--volume-period",
         type=int,
-        default=SweepParams.volume_period,
+        default=None,
         help="Periodo para volumen medio",
     )
     parser.add_argument(
-        "--min-rvol", type=float, default=SweepParams.min_rvol, help="Volumen relativo mínimo"
+        "--min-rvol", type=float, default=None, help="Volumen relativo mínimo"
     )
     parser.add_argument(
         "--vol-percentile-min",
         type=float,
-        default=SweepParams.vol_percentile_min,
+        default=None,
         help="Percentil inferior de volumen intradía",
     )
     parser.add_argument(
         "--vol-percentile-max",
         type=float,
-        default=SweepParams.vol_percentile_max,
+        default=None,
         help="Percentil superior de volumen intradía",
     )
     parser.add_argument(
@@ -163,78 +163,78 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         dest="use_trend_filter",
         help="Desactivar filtro de tendencia EMA",
     )
-    parser.set_defaults(use_trend_filter=SweepParams.use_trend_filter)
+    parser.set_defaults(use_trend_filter=None)
     parser.add_argument(
         "--max-atr-mult-intraday",
         type=float,
-        default=SweepParams.max_atr_mult_intraday,
+        default=None,
         help="Umbral máximo de ATR intradía",
     )
     parser.add_argument(
         "--max-trades-per-day",
         type=int,
-        default=SweepParams.max_trades_per_day,
+        default=None,
         help="Máximo de operaciones diarias",
     )
     parser.add_argument(
         "--sweep-max-holding-bars",
         type=int,
-        default=SweepParams.max_holding_bars,
+        default=None,
         help="Máximo de velas en posición para Sweep",
     )
     parser.add_argument(
         "--atr-stop-mult",
         type=float,
-        default=SweepParams.atr_stop_mult,
+        default=None,
         help="Buffer ATR para stop loss",
     )
     parser.add_argument(
         "--rr-multiple",
         type=float,
-        default=SweepParams.rr_multiple,
+        default=None,
         help="Multiplicador RR para TP",
     )
     # Parámetros Opening Sweep V4
     parser.add_argument(
         "--wick-factor",
         type=float,
-        default=opening_defaults.wick_factor,
+        default=None,
         help="Mínima relación mecha/cuerpo para validar la barrida",
     )
     parser.add_argument(
         "--atr-percentile",
         type=float,
-        default=opening_defaults.atr_percentile,
+        default=None,
         help="Percentil de ATR normalizado requerido para operar",
     )
     parser.add_argument(
         "--volume-percentile",
         type=float,
-        default=opening_defaults.volume_percentile,
+        default=None,
         help="Percentil de volumen intradía requerido para operar",
     )
     parser.add_argument(
         "--sl-buffer-atr",
         type=float,
-        default=opening_defaults.sl_buffer_atr,
+        default=None,
         help="Buffer ATR absoluto usado en el stop loss",
     )
     parser.add_argument(
         "--sl-buffer-relative",
         type=float,
-        default=opening_defaults.sl_buffer_relative,
+        default=None,
         help="Buffer relativo (ATR normalizado) usado en el stop loss",
     )
     parser.add_argument(
         "--tp-multiplier",
         type=float,
-        default=opening_defaults.tp_multiplier,
+        default=None,
         help="Multiplicador RR para calcular el take profit",
     )
     parser.add_argument(
         "--max-horizon",
         type=int,
-        default=opening_defaults.max_horizon,
+        default=None,
         help="Máximo de barras a mantener la posición en Opening Sweep",
     )
     parser.add_argument(
