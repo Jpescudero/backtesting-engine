@@ -8,7 +8,7 @@ from typing import List, Optional, Sequence, Tuple
 
 import numpy as np
 
-from src.config.paths import NPZ_DIR, ensure_directories_exist
+from src.config.paths import NPZ_DIR, ensure_directories_exist, resolve_data_dir_with_pattern
 
 
 @dataclass
@@ -177,7 +177,8 @@ class NPZOHLCVFeed:
         Por simplicidad, filtramos por '*<timeframe>.npz', p.ej. '*_1m.npz'.
         """
         pattern = f"*_{self.timeframe}.npz" if not self.timeframe.startswith("_") else f"*{self.timeframe}.npz"
-        files = sorted(self.base_dir.glob(pattern))
+        search_dir = resolve_data_dir_with_pattern(self.base_dir, pattern)
+        files = sorted(search_dir.glob(pattern))
         return files
 
     def load_all(self) -> OHLCVArrays:

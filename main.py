@@ -15,8 +15,8 @@ import math
 from pathlib import Path
 from typing import Iterable, Sequence
 
+from src.config.paths import REPORTS_DIR, bootstrap_data_roots
 from src.engine.core import BacktestConfig
-from src.config.paths import REPORTS_DIR
 from src.pipeline.backtest_runner import (
     BacktestRunConfig,
     StrategyParams,
@@ -197,6 +197,20 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         default=None,
         help="Ruta a archivo de configuración simple key=value",
     )
+    parser.add_argument(
+        "--sync-cloud",
+        dest="sync_cloud",
+        action="store_true",
+        default=None,
+        help=("Sincroniza el hub de datos local hacia los mirrors en la nube configurados"),
+    )
+    parser.add_argument(
+        "--no-sync-cloud",
+        dest="sync_cloud",
+        action="store_false",
+        help=("Desactiva la sincronización cloud aunque esté activada en run_settings"),
+    )
+    parser.set_defaults(sync_cloud=None)
     parser.add_argument("--seed", type=int, default=None, help="Seed global para reproducibilidad")
     parser.add_argument(
         "--snapshot-interval",
@@ -474,6 +488,16 @@ def main(argv: Iterable[str] | None = None) -> None:
     logging.basicConfig(level=logging.INFO, format="[%(levelname)s] %(message)s")
 
     config_file_values = _load_config_file(_resolve_config_file(args.config_file))
+
+    sync_cloud = _get_setting(
+        args.sync_cloud,
+        config_file_values,
+        "sync_cloud",
+        False,
+        lambda v: str(v).lower() == "true",
+    )
+
+    bootstrap_data_roots(sync_to_cloud=sync_cloud)
 
     meta_config: BacktestRunConfig | None = None
     if args.replay_metadata:
@@ -781,14 +805,10 @@ def main(argv: Iterable[str] | None = None) -> None:
     if run_config.generate_main_plots:
         print(f"Plot equity/trades: {_describe_artifact(artifacts.reports.equity_path)}")
     if run_config.generate_trade_plots:
-        print(
-            "Plot mejores trades: " f"{_describe_artifact(artifacts.reports.best_trade_plot_path)}"
-        )
-        print(
-            "Plot peores trades: " f"{_describe_artifact(artifacts.reports.worst_trade_plot_path)}"
-        )
+        print(f"Plot mejores trades: {_describe_artifact(artifacts.reports.best_trade_plot_path)}")
+        print(f"Plot peores trades: {_describe_artifact(artifacts.reports.worst_trade_plot_path)}")
     if dashboard_path:
-        print("Dashboard trades: " f"{_describe_artifact(dashboard_path)}")
+        print(f"Dashboard trades: {_describe_artifact(dashboard_path)}")
 
     print_timings(artifacts.timings)
 

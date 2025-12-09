@@ -1,0 +1,10 @@
+{
+  "local_hubs": [
+    "C:/Users/JorgeP/Market Data",
+    "C:/Users/Jorge/Market Data"
+  ],
+  "cloud_hubs": [
+    "C:/Users/JorgeP/OneDrive/Bolsa/Scripts/10. Backtesting/data"
+  ],
+  "notes": "Añade aquí más rutas de ordenadores si quieres que actúen como hubs locales."
+}

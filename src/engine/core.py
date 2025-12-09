@@ -1045,7 +1045,7 @@ def run_backtest_with_signals(
         atr = np.full_like(data.c, np.nan, dtype=float)
     elif atr.shape[0] != bars:
         raise ValueError(
-            "El tamaño de atr " f"({atr.shape[0]}) no coincide con el número de barras ({bars})."
+            f"El tamaño de atr ({atr.shape[0]}) no coincide con el número de barras ({bars})."
         )
 
     if stop_losses is None:

@@ -4,8 +4,7 @@ import json
 import logging
 from dataclasses import asdict, dataclass, field, is_dataclass
 from pathlib import Path
-from typing import Any, Dict, Mapping, Optional, Sequence, Union, overload
-from typing import Literal
+from typing import Any, Dict, Literal, Mapping, Optional, Sequence, Union, overload
 
 import matplotlib
 import numpy as np
@@ -185,8 +184,7 @@ def _coerce_strategy_params(
     params: StrategyParamsType | Mapping[str, object],
     *,
     strategy_name: Literal["microstructure_sweep"],
-) -> SweepParams:
-    ...
+) -> SweepParams: ...
 
 
 @overload
@@ -194,15 +192,13 @@ def _coerce_strategy_params(
     params: StrategyParamsType | Mapping[str, object],
     *,
     strategy_name: Literal["microstructure_reversal"],
-) -> StrategyParams:
-    ...
+) -> StrategyParams: ...
 
 
 @overload
 def _coerce_strategy_params(
     params: StrategyParamsType | Mapping[str, object], *, strategy_name: str
-) -> StrategyParamsType:
-    ...
+) -> StrategyParamsType: ...
 
 
 def _coerce_strategy_params(
