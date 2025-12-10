@@ -11,6 +11,7 @@ from src.config.paths import (
     DARWINEX_RAW_DIR,
     PARQUET_TICKS_DIR,
     ensure_directories_exist,
+    resolve_data_dir_with_pattern,
 )
 
 # Símbolo por defecto (puedes cambiarlo o parametrizarlo desde main)
@@ -142,12 +143,15 @@ def data_to_parquet(
     """
     ensure_directories_exist()
 
-    # Por defecto: data/raw/darwinex/<symbol>/
-    base_raw_dir = Path(raw_dir) if raw_dir is not None else (DARWINEX_RAW_DIR / symbol)
-    base_raw_dir = base_raw_dir.resolve()
+    # Por defecto: data/raw/darwinex/<symbol>/ (buscando mirrors con datos reales)
+    base_raw_dir = (
+        Path(raw_dir).resolve()
+        if raw_dir is not None
+        else resolve_data_dir_with_pattern(DARWINEX_RAW_DIR / symbol, "*.log.gz")
+    )
 
     if not base_raw_dir.exists():
-        raise FileNotFoundError(f"No existe el directorio de datos crudos: {base_raw_dir}")
+        base_raw_dir.mkdir(parents=True, exist_ok=True)
 
     # Carpeta de salida: data/parquet/ticks/
     out_root = Path(out_root) if out_root is not None else PARQUET_TICKS_DIR

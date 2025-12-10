@@ -44,6 +44,28 @@ def test_load_params_parses_types(tmp_path: Path) -> None:
     assert params["SESSION_END_TIME"] == "17:30"
 
 
+def test_load_params_strips_inline_comments(tmp_path: Path) -> None:
+    config_content = """
+    SYMBOL=TEST
+    START_YEAR=2020
+    END_YEAR=2021
+    DATA_PATH=data    # ruta base relativa
+    DATA_FILE_PATTERN={symbol}.csv  # patron
+    LOOKBACK_MINUTES=5
+    ZSCORE_ENTRY=1.0
+    HOLD_TIME_BARS=2
+    SESSION_START_TIME=09:00
+    SESSION_END_TIME=17:30
+    """
+    config_file = tmp_path / "params_with_comments.txt"
+    config_file.write_text(config_content)
+
+    params = load_params(str(config_file))
+
+    assert params["DATA_PATH"] == "data"
+    assert params["DATA_FILE_PATTERN"] == "{symbol}.csv"
+
+
 def test_load_intraday_data_filters_and_deduplicates(tmp_path: Path) -> None:
     data_path = tmp_path / "data"
     data_path.mkdir()
@@ -72,6 +94,83 @@ def test_load_intraday_data_filters_and_deduplicates(tmp_path: Path) -> None:
     assert loaded.index.is_monotonic_increasing
     assert len(loaded) == 2
     assert loaded.loc[timestamps[1], "volume"] == 50
+
+
+def test_load_intraday_data_resolves_via_data_hubs(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    data_file = tmp_path / "mirror" / "TEST.csv"
+    data_file.parent.mkdir(parents=True)
+    df = pd.DataFrame(
+        {
+            "timestamp": pd.date_range("2020-01-01 00:00", periods=2, freq="min"),
+            "open": [1.0, 2.0],
+            "high": [1.1, 2.1],
+            "low": [0.9, 1.9],
+            "close": [1.05, 1.95],
+            "volume": [100, 200],
+        }
+    )
+    df.to_csv(data_file, index=False)
+
+    def _fake_resolve(path: Path) -> Path:
+        assert path == Path("data") / "TEST.csv"
+        return data_file
+
+    monkeypatch.setattr(
+        "research.intraday_mean_reversion.utils.data_loader.resolve_data_path",
+        _fake_resolve,
+    )
+
+    params = {
+        "DATA_PATH": "data",
+        "DATA_FILE_PATTERN": "{symbol}.csv",
+        "START_YEAR": 2020,
+        "END_YEAR": 2020,
+    }
+
+    loaded = load_intraday_data("TEST", 2020, 2020, params)
+
+    assert loaded.index[0].year == 2020
+    assert loaded.iloc[0]["volume"] == 100
+
+
+def test_load_intraday_data_remaps_absolute_path_to_mirror(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    primary_hub = tmp_path / "primary"
+    mirror_hub = tmp_path / "mirror"
+    base_path = primary_hub / "data"
+    data_file = mirror_hub / "data" / "TEST.csv"
+    data_file.parent.mkdir(parents=True)
+
+    df = pd.DataFrame(
+        {
+            "timestamp": pd.date_range("2020-01-01 00:00", periods=1, freq="min"),
+            "open": [1.0],
+            "high": [1.1],
+            "low": [0.9],
+            "close": [1.05],
+            "volume": [100],
+        }
+    )
+    df.to_csv(data_file, index=False)
+
+    monkeypatch.setattr(
+        "research.intraday_mean_reversion.utils.data_loader.DATA_DIR",
+        primary_hub,
+    )
+    monkeypatch.setattr(
+        "research.intraday_mean_reversion.utils.data_loader.DATA_MIRRORS",
+        [mirror_hub],
+    )
+
+    params = {
+        "DATA_PATH": str(base_path),
+        "DATA_FILE_PATTERN": "{symbol}.csv",
+        "START_YEAR": 2020,
+        "END_YEAR": 2020,
+    }
+
+    loaded = load_intraday_data("TEST", 2020, 2020, params)
+
+    assert loaded.iloc[0]["close"] == 1.05
 
 
 def test_events_labeling_and_metrics(tmp_path: Path) -> None:
