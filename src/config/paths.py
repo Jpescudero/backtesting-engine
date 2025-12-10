@@ -62,6 +62,7 @@ DATA_ROOTS_TEMPLATE = CONFIG_DIR / "data_roots.example.json"
 DEFAULT_LOCAL_HUBS = [
     Path(r"C:/Users/JorgeP/Market Data"),
     Path(r"C:/Users/Jorge/Market Data"),
+    Path(r"C:/Users/jorge/Market Data"),
 ]
 
 DEFAULT_CLOUD_HUBS = [
