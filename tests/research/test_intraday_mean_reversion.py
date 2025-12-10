@@ -74,6 +74,43 @@ def test_load_intraday_data_filters_and_deduplicates(tmp_path: Path) -> None:
     assert loaded.loc[timestamps[1], "volume"] == 50
 
 
+def test_load_intraday_data_resolves_via_data_hubs(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    data_file = tmp_path / "mirror" / "TEST.csv"
+    data_file.parent.mkdir(parents=True)
+    df = pd.DataFrame(
+        {
+            "timestamp": pd.date_range("2020-01-01 00:00", periods=2, freq="min"),
+            "open": [1.0, 2.0],
+            "high": [1.1, 2.1],
+            "low": [0.9, 1.9],
+            "close": [1.05, 1.95],
+            "volume": [100, 200],
+        }
+    )
+    df.to_csv(data_file, index=False)
+
+    def _fake_resolve(path: Path) -> Path:
+        assert path == Path("data") / "TEST.csv"
+        return data_file
+
+    monkeypatch.setattr(
+        "research.intraday_mean_reversion.utils.data_loader.resolve_data_path",
+        _fake_resolve,
+    )
+
+    params = {
+        "DATA_PATH": "data",
+        "DATA_FILE_PATTERN": "{symbol}.csv",
+        "START_YEAR": 2020,
+        "END_YEAR": 2020,
+    }
+
+    loaded = load_intraday_data("TEST", 2020, 2020, params)
+
+    assert loaded.index[0].year == 2020
+    assert loaded.iloc[0]["volume"] == 100
+
+
 def test_events_labeling_and_metrics(tmp_path: Path) -> None:
     timestamps = pd.date_range("2020-01-01 09:00", periods=5, freq="min")
     prices = [100.0, 100.0, 90.0, 95.0, 100.0]
