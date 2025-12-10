@@ -54,6 +54,30 @@ def _convert_value(raw_value: str) -> Any:
         return value
 
 
+def _strip_inline_comment(raw_value: str) -> str:
+    """Remove inline comments from a raw configuration value.
+
+    Inline comments start with ``#`` preceded by whitespace. Content before the
+    comment is preserved and stripped of trailing whitespace; if no comment is
+    found, the original value is returned stripped.
+
+    Parameters
+    ----------
+    raw_value : str
+        Raw string value that may include an inline comment.
+
+    Returns
+    -------
+    str
+        Value without inline comment markers.
+    """
+
+    for idx, char in enumerate(raw_value):
+        if char == "#" and (idx == 0 or raw_value[idx - 1].isspace()):
+            return raw_value[:idx].rstrip()
+    return raw_value.strip()
+
+
 def load_params(path: str) -> dict[str, Any]:
     """Load research parameters from a key=value configuration file.
 
@@ -88,7 +112,7 @@ def load_params(path: str) -> dict[str, Any]:
             raise ValueError(f"Invalid line {idx}: '{line}' (expected key=value)")
         key, value = stripped.split("=", maxsplit=1)
         key = key.strip()
-        params[key] = _convert_value(value)
+        params[key] = _convert_value(_strip_inline_comment(value))
 
     missing = [key for key in _REQUIRED_KEYS if key not in params]
     if missing:

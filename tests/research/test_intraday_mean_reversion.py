@@ -44,6 +44,28 @@ def test_load_params_parses_types(tmp_path: Path) -> None:
     assert params["SESSION_END_TIME"] == "17:30"
 
 
+def test_load_params_strips_inline_comments(tmp_path: Path) -> None:
+    config_content = """
+    SYMBOL=TEST
+    START_YEAR=2020
+    END_YEAR=2021
+    DATA_PATH=data    # ruta base relativa
+    DATA_FILE_PATTERN={symbol}.csv  # patron
+    LOOKBACK_MINUTES=5
+    ZSCORE_ENTRY=1.0
+    HOLD_TIME_BARS=2
+    SESSION_START_TIME=09:00
+    SESSION_END_TIME=17:30
+    """
+    config_file = tmp_path / "params_with_comments.txt"
+    config_file.write_text(config_content)
+
+    params = load_params(str(config_file))
+
+    assert params["DATA_PATH"] == "data"
+    assert params["DATA_FILE_PATTERN"] == "{symbol}.csv"
+
+
 def test_load_intraday_data_filters_and_deduplicates(tmp_path: Path) -> None:
     data_path = tmp_path / "data"
     data_path.mkdir()
