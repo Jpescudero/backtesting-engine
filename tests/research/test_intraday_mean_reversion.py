@@ -173,6 +173,46 @@ def test_load_intraday_data_remaps_absolute_path_to_mirror(monkeypatch: pytest.M
     assert loaded.iloc[0]["close"] == 1.05
 
 
+def test_load_intraday_data_remaps_case_insensitive(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    primary_hub = tmp_path / "primary"
+    mirror_hub = tmp_path / "mirror"
+    base_path = primary_hub.parent / "Primary" / "data"
+    data_file = mirror_hub / "data" / "TEST.csv"
+    data_file.parent.mkdir(parents=True)
+
+    df = pd.DataFrame(
+        {
+            "timestamp": pd.date_range("2020-01-01 00:00", periods=1, freq="min"),
+            "open": [1.0],
+            "high": [1.1],
+            "low": [0.9],
+            "close": [1.05],
+            "volume": [100],
+        }
+    )
+    df.to_csv(data_file, index=False)
+
+    monkeypatch.setattr(
+        "research.intraday_mean_reversion.utils.data_loader.DATA_DIR",
+        primary_hub,
+    )
+    monkeypatch.setattr(
+        "research.intraday_mean_reversion.utils.data_loader.DATA_MIRRORS",
+        [mirror_hub],
+    )
+
+    params = {
+        "DATA_PATH": str(base_path),
+        "DATA_FILE_PATTERN": "{symbol}.csv",
+        "START_YEAR": 2020,
+        "END_YEAR": 2020,
+    }
+
+    loaded = load_intraday_data("TEST", 2020, 2020, params)
+
+    assert loaded.iloc[0]["high"] == 1.1
+
+
 def test_events_labeling_and_metrics(tmp_path: Path) -> None:
     timestamps = pd.date_range("2020-01-01 09:00", periods=5, freq="min")
     prices = [100.0, 100.0, 90.0, 95.0, 100.0]
