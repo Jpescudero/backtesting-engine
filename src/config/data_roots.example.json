@@ -1,7 +1,8 @@
 {
   "local_hubs": [
     "C:/Users/JorgeP/Market Data",
-    "C:/Users/Jorge/Market Data"
+    "C:/Users/Jorge/Market Data",
+    "C:/Users/jorge/Market Data"
   ],
   "cloud_hubs": [
     "C:/Users/JorgeP/OneDrive/Bolsa/Scripts/10. Backtesting/data"

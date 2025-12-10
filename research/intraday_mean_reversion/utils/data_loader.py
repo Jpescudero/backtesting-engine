@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 import logging
-from pathlib import Path
+from pathlib import Path, PurePath
 from typing import Any
 
 import pandas as pd
+
+from src.config.paths import DATA_DIR, DATA_MIRRORS, PROJECT_ROOT, resolve_data_path
 
 logger = logging.getLogger(__name__)
 
@@ -14,11 +16,88 @@ logger = logging.getLogger(__name__)
 _EXPECTED_COLUMNS = {"open", "high", "low", "close", "volume"}
 
 
+def _relative_to_casefold(path: Path, base: Path) -> Path | None:
+    """Return the relative path if ``path`` is under ``base`` ignoring case.
+
+    This helper mirrors ``Path.relative_to`` but performs a case-insensitive
+    comparison so Windows-like absolute paths with different letter casing can
+    still be mapped onto configured hubs.
+
+    Parameters
+    ----------
+    path : pathlib.Path
+        Absolute path to make relative.
+    base : pathlib.Path
+        Base directory to relativize against.
+
+    Returns
+    -------
+    pathlib.Path | None
+        Relative path components if ``path`` is a descendant of ``base`` when
+        compared case-insensitively; otherwise ``None``.
+    """
+
+    path_parts = [part.lower() for part in PurePath(path).parts]
+    base_parts = [part.lower() for part in PurePath(base).parts]
+
+    if len(base_parts) > len(path_parts):
+        return None
+
+    if path_parts[: len(base_parts)] != base_parts:
+        return None
+
+    remainder = path.parts[len(base_parts) :]
+    return Path(*remainder)
+
+
 def _resolve_data_path(symbol: str, params: dict[str, Any]) -> Path:
+    """Resolve the data file path using data hubs and project fallbacks.
+
+    The function honors the active data hub, its mirrors, and project-relative
+    paths. Absolute paths that point into a hub are remapped across available
+    mirrors before failing over to the provided location.
+    """
+
     base_path = Path(params["DATA_PATH"])
     pattern = str(params["DATA_FILE_PATTERN"])
     resolved_pattern = pattern.format(symbol=symbol)
-    return base_path / resolved_pattern
+
+    candidates: list[Path] = []
+    resolved_filename = base_path / resolved_pattern
+
+    if base_path.is_absolute():
+        hubs = [DATA_DIR, *DATA_MIRRORS]
+        relative_path: Path | None = None
+
+        for hub in hubs:
+            try:
+                relative_path = resolved_filename.relative_to(hub)
+                break
+            except ValueError:
+                relative_path = _relative_to_casefold(resolved_filename, hub)
+                if relative_path is not None:
+                    break
+
+        if relative_path is not None:
+            for hub in hubs:
+                remapped = hub / relative_path
+                if remapped not in candidates:
+                    candidates.append(remapped)
+        else:
+            candidates.append(resolved_filename)
+    else:
+        primary = resolve_data_path(resolved_filename)
+        candidates.append(primary)
+
+        project_scoped = PROJECT_ROOT / resolved_filename
+        if project_scoped not in candidates:
+            candidates.append(project_scoped)
+
+    for candidate in candidates:
+        if candidate.exists():
+            return candidate
+
+    return candidates[0]
 
 
 def _ensure_datetime_index(df: pd.DataFrame) -> pd.DataFrame:
