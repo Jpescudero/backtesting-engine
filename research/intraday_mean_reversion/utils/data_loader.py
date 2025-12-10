@@ -8,6 +8,8 @@ from typing import Any
 
 import pandas as pd
 
+from src.config.paths import PROJECT_ROOT, resolve_data_path
+
 logger = logging.getLogger(__name__)
 
 
@@ -15,10 +17,28 @@ _EXPECTED_COLUMNS = {"open", "high", "low", "close", "volume"}
 
 
 def _resolve_data_path(symbol: str, params: dict[str, Any]) -> Path:
+    """Resolve the data file path using data hubs and project fallbacks."""
+
     base_path = Path(params["DATA_PATH"])
     pattern = str(params["DATA_FILE_PATTERN"])
     resolved_pattern = pattern.format(symbol=symbol)
-    return base_path / resolved_pattern
+
+    candidates = [resolve_data_path(base_path / resolved_pattern)]
+
+    project_scoped = PROJECT_ROOT / base_path / resolved_pattern
+    if project_scoped not in candidates:
+        candidates.append(project_scoped)
+
+    if base_path.is_absolute():
+        abs_target = base_path / resolved_pattern
+        if abs_target not in candidates:
+            candidates.append(abs_target)
+
+    for candidate in candidates:
+        if candidate.exists():
+            return candidate
+
+    return candidates[0]
 
 
 def _ensure_datetime_index(df: pd.DataFrame) -> pd.DataFrame:
