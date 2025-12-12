@@ -119,20 +119,29 @@ def _resolve_data_path(symbol: str, base_path: Path, resolved_pattern: str) -> P
 def _find_symbol_directory(base_path: Path, symbol: str) -> Path | None:
     """Locate a directory named after the symbol within candidate roots.
 
-    The search considers both the configured ``DATA_PATH`` and its parent
-    (useful when the configured path is a sibling like ``.../data`` but the
-    actual files live under ``.../parquet/ticks/<symbol>``).
+    The search considers the configured ``DATA_PATH``, all of its ancestors,
+    and configured data hubs. This is helpful when ``DATA_PATH`` mistakenly
+    points to a specific file or sibling directory while the actual symbol
+    data lives elsewhere under the same tree (for example,
+    ``.../data/NDXm_1m.parquet`` while data resides in
+    ``.../parquet/ticks/NDXm``).
     """
 
     search_roots: list[Path] = []
-    if base_path.exists():
-        search_roots.append(base_path)
-    if base_path.parent.exists():
-        search_roots.append(base_path.parent)
+    seen: set[Path] = set()
+
+    for candidate in (base_path, *base_path.parents, DATA_DIR, *DATA_MIRRORS):
+        if candidate is None:
+            continue
+        if candidate in seen:
+            continue
+        seen.add(candidate)
+        if candidate.exists():
+            search_roots.append(candidate)
 
     lower_symbol = symbol.lower()
     for root in search_roots:
-        if root.name.lower() == lower_symbol:
+        if root.name.lower() == lower_symbol and root.is_dir():
             return root
         for candidate in root.rglob("*"):
             if candidate.is_dir() and candidate.name.lower() == lower_symbol:

@@ -326,6 +326,54 @@ def test_load_intraday_data_loads_symbol_directory(tmp_path: Path) -> None:
     assert loaded.loc[pd.Timestamp("2020-01-02 00:00")]["close"] == 2.05
 
 
+def test_load_intraday_data_searches_ancestor_paths(tmp_path: Path) -> None:
+    base_root = tmp_path / "Market Data"
+    misplaced_data_path = base_root / "data" / "NDXm_1m.csv"
+    actual_path = base_root / "parquet" / "ticks"
+    symbol = "NDXm"
+
+    parquet_dir = actual_path / symbol
+    parquet_dir.mkdir(parents=True)
+
+    first_chunk = parquet_dir / "chunk_1.csv"
+    second_chunk = parquet_dir / "chunk_2.csv"
+
+    df_first = pd.DataFrame(
+        {
+            "timestamp": pd.date_range("2020-01-01 00:00", periods=1, freq="min"),
+            "open": [1.0],
+            "high": [1.1],
+            "low": [0.9],
+            "close": [1.05],
+            "volume": [100],
+        }
+    )
+    df_second = pd.DataFrame(
+        {
+            "timestamp": pd.date_range("2021-01-01 00:00", periods=1, freq="min"),
+            "open": [2.0],
+            "high": [2.1],
+            "low": [1.9],
+            "close": [2.05],
+            "volume": [200],
+        }
+    )
+    df_first.to_csv(first_chunk, index=False)
+    df_second.to_csv(second_chunk, index=False)
+
+    params = {
+        "DATA_PATH": str(misplaced_data_path),
+        "DATA_FILE_PATTERN": "{symbol}_1m.csv",
+        "START_YEAR": 2020,
+        "END_YEAR": 2021,
+    }
+
+    loaded = load_intraday_data(symbol, 2020, 2021, params)
+
+    assert len(loaded) == 2
+    assert loaded.loc[pd.Timestamp("2021-01-01 00:00")]["close"] == 2.05
+
+
 def test_load_intraday_data_accepts_symbol_as_data_path(tmp_path: Path) -> None:
     base_root = tmp_path / "Market Data" / "parquet" / "ticks"
     symbol = "NDXm"
