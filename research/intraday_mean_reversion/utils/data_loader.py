@@ -255,12 +255,18 @@ def load_intraday_data(symbol: str, start_year: int, end_year: int, params: dict
             allowed_suffixes = {target_suffix}
 
         def _collect_files(extensions: set[str]) -> list[Path]:
+            expected_stem_lower = expected_stem.lower() if expected_stem else None
+
             return sorted(
                 candidate
                 for candidate in path.rglob("*")
                 if candidate.is_file()
                 and candidate.suffix.lower() in extensions
-                and (not expected_stem or candidate.stem == expected_stem)
+                and (
+                    not expected_stem
+                    or candidate.stem == expected_stem
+                    or candidate.stem.lower() == expected_stem_lower
+                )
             )
 
         files = _collect_files(allowed_suffixes)

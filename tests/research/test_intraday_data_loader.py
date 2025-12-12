@@ -68,3 +68,19 @@ def test_load_intraday_data_ignores_non_matching_stems(tmp_path, base_params):
 
     with pytest.raises(FileNotFoundError):
         load_intraday_data(symbol, 2020, 2020, base_params)
+
+
+@pytest.mark.usefixtures("base_params")
+def test_load_intraday_data_matches_case_insensitive_stem(tmp_path, base_params):
+    symbol = "TeSt"
+    data_dir = tmp_path / symbol
+    data_dir.mkdir()
+
+    csv_path = data_dir / "test_1m.csv"
+    csv_path.write_text(
+        "timestamp,open,high,low,close,volume\n2020-01-01 00:00:00,1,1,1,1,1\n"
+    )
+
+    df = load_intraday_data(symbol, 2020, 2020, base_params)
+
+    assert not df.empty
