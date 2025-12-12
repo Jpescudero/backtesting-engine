@@ -14,10 +14,11 @@ from research.intraday_mean_reversion.utils.config_loader import load_params
 from research.intraday_mean_reversion.utils.data_loader import load_intraday_data
 from research.intraday_mean_reversion.utils.events import detect_mean_reversion_events
 from research.intraday_mean_reversion.utils.labeling import label_events
-from research.intraday_mean_reversion.utils.metrics import compute_metrics
+from research.intraday_mean_reversion.utils.metrics import compute_daily_pnl, compute_metrics
 from research.intraday_mean_reversion.utils.plotting import (
     plot_heatmap_param_space,
     plot_return_distribution,
+    plot_zscore_vs_expected_return,
     plot_zscore_vs_success,
 )
 
@@ -48,13 +49,20 @@ def _run_single(df: pd.DataFrame, base_params: dict[str, Any], output_dir: Path)
     labeled = label_events(df, events, base_params)
     logger.info("Computing metrics...")
     metrics = compute_metrics(labeled)
+    daily_pnl = compute_daily_pnl(labeled)
+    loss_tail_x = float(base_params.get("LOSS_TAIL_X", 0.001))
 
     output_dir.mkdir(parents=True, exist_ok=True)
     labeled.to_csv(output_dir / "labeled_events.csv")
     pd.DataFrame([metrics]).to_csv(output_dir / "metrics.csv", index=False)
+    daily_pnl.to_csv(output_dir / "daily_pnl.csv", index=False)
 
     plot_return_distribution(labeled, output_dir / "return_distribution.png", by_side=True)
-    plot_zscore_vs_success(labeled, output_dir / "zscore_vs_success.png")
+    bin_stats = plot_zscore_vs_success(labeled, output_dir / "zscore_vs_success.png", loss_tail_x=loss_tail_x)
+    plot_zscore_vs_expected_return(
+        labeled, output_dir / "zscore_expected_return.png", loss_tail_x=loss_tail_x
+    )
+    bin_stats.to_csv(output_dir / "zscore_bins.csv", index=False)
 
     logger.info("Summary metrics: %s", metrics)
 
