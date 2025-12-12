@@ -248,15 +248,33 @@ def load_intraday_data(symbol: str, start_year: int, end_year: int, params: dict
 
     def _load_directory(path: Path) -> pd.DataFrame:
         target_suffix = Path(resolved_pattern).suffix.lower()
+        expected_stem = Path(resolved_pattern).stem
         allowed_suffixes = {".parquet", ".pq", ".csv", ".txt", ".npz"}
-        if target_suffix:
+        explicit_suffix = bool(target_suffix)
+        if explicit_suffix:
             allowed_suffixes = {target_suffix}
 
-        files = sorted(
-            candidate
-            for candidate in path.rglob("*")
-            if candidate.is_file() and candidate.suffix.lower() in allowed_suffixes
-        )
+        def _collect_files(extensions: set[str]) -> list[Path]:
+            return sorted(
+                candidate
+                for candidate in path.rglob("*")
+                if candidate.is_file()
+                and candidate.suffix.lower() in extensions
+                and (not expected_stem or candidate.stem == expected_stem)
+            )
+
+        files = _collect_files(allowed_suffixes)
+
+        if not files and explicit_suffix:
+            fallback_suffixes = {".parquet", ".pq", ".csv", ".txt", ".npz"}
+            files = _collect_files(fallback_suffixes)
+            if files:
+                logger.warning(
+                    "No files with expected suffix '%s' found under %s; using fallback formats.",
+                    target_suffix,
+                    path,
+                )
+
         if not files:
             raise FileNotFoundError(
                 f"No data files found for symbol '{symbol}' under directory {path}. "
