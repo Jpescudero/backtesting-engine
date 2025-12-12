@@ -132,6 +132,8 @@ def _find_symbol_directory(base_path: Path, symbol: str) -> Path | None:
 
     lower_symbol = symbol.lower()
     for root in search_roots:
+        if root.name.lower() == lower_symbol:
+            return root
         for candidate in root.rglob("*"):
             if candidate.is_dir() and candidate.name.lower() == lower_symbol:
                 return candidate
