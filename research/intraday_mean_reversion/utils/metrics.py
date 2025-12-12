@@ -60,7 +60,8 @@ def compute_daily_pnl(labeled_events: pd.DataFrame) -> pd.DataFrame:
     if labeled_events.empty:
         return pd.DataFrame(columns=["date", "daily_pnl", "n_trades"])
 
-    entry_dates = pd.to_datetime(labeled_events.get("entry_timestamp", labeled_events.index)).normalize()
+    entry_timestamps = labeled_events.get("entry_timestamp", labeled_events.index)
+    entry_dates = pd.DatetimeIndex(pd.to_datetime(entry_timestamps)).normalize()
     daily = labeled_events.assign(entry_date=entry_dates).groupby("entry_date", as_index=False).agg(
         daily_pnl=("r_H_net", "sum"),
         n_trades=("r_H_net", "size"),
