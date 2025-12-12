@@ -6,6 +6,7 @@ import logging
 from pathlib import Path, PurePath
 from typing import Any
 
+import numpy as np
 import pandas as pd
 
 from src.config.paths import DATA_DIR, DATA_MIRRORS, PROJECT_ROOT, resolve_data_path
@@ -214,17 +215,40 @@ def load_intraday_data(symbol: str, start_year: int, end_year: int, params: dict
     data_path = _resolve_data_path(symbol, base_path, resolved_pattern)
     data_exists = data_path.exists()
 
+    def _read_npz(path: Path) -> pd.DataFrame:
+        required_keys = {"ts", "o", "h", "l", "c", "v"}
+        data = np.load(path)
+        missing_keys = required_keys - set(data.keys())
+        if missing_keys:
+            raise ValueError(
+                f"NPZ file {path} missing required keys: {sorted(missing_keys)}"
+            )
+
+        idx = pd.to_datetime(data["ts"], unit="ns", utc=True)
+        return pd.DataFrame(
+            {
+                "open": data["o"],
+                "high": data["h"],
+                "low": data["l"],
+                "close": data["c"],
+                "volume": data["v"],
+            },
+            index=idx,
+        )
+
     def _read_file(path: Path) -> pd.DataFrame:
         suffix = path.suffix.lower()
         if suffix in {".parquet", ".pq"}:
             return pd.read_parquet(path)
         if suffix in {".csv", ".txt"}:
             return pd.read_csv(path)
+        if suffix == ".npz":
+            return _read_npz(path)
         raise ValueError(f"Unsupported data file format: {suffix}")
 
     def _load_directory(path: Path) -> pd.DataFrame:
         target_suffix = Path(resolved_pattern).suffix.lower()
-        allowed_suffixes = {".parquet", ".pq", ".csv", ".txt"}
+        allowed_suffixes = {".parquet", ".pq", ".csv", ".txt", ".npz"}
         if target_suffix:
             allowed_suffixes = {target_suffix}
 
