@@ -73,7 +73,25 @@ def compute_daily_pnl(labeled_events: pd.DataFrame) -> pd.DataFrame:
 def compute_zscore_bin_stats(
     labeled_events: pd.DataFrame, bins: int, loss_tail_x: float, alpha: float = 0.05
 ) -> pd.DataFrame:
-    """Compute performance statistics by z-score bin."""
+    """Compute performance statistics by z-score bin.
+
+    Parameters
+    ----------
+    labeled_events : pd.DataFrame
+        Labeled events containing ``z_score`` and return columns.
+    bins : int
+        Number of bins to create along the z-score axis.
+    loss_tail_x : float
+        Threshold used to compute the probability of losses below ``-x``.
+    alpha : float, optional
+        Significance level for the Wilson confidence interval. ``0.05`` yields a 95% CI.
+
+    Returns
+    -------
+    pd.DataFrame
+        DataFrame with one row per z-score bin including success probabilities and
+        return distribution statistics.
+    """
 
     if labeled_events.empty:
         return pd.DataFrame(
@@ -132,7 +150,11 @@ def compute_zscore_bin_stats(
             }
         )
 
-    return pd.DataFrame(records).sort_values("z_bin_left").reset_index(drop=True)
+    bin_stats = pd.DataFrame(records).sort_values("z_bin_left").reset_index(drop=True)
+    if not bin_stats.empty:
+        bin_stats["z_bin_center"] = (bin_stats["z_bin_left"] + bin_stats["z_bin_right"]) / 2
+
+    return bin_stats
 
 
 def compute_metrics(labeled_events: pd.DataFrame) -> dict[str, Any]:

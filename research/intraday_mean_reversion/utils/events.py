@@ -136,6 +136,17 @@ def detect_mean_reversion_events(df: pd.DataFrame, params: dict[str, Any]) -> pd
 
     events = events.dropna(subset=["z_score", "ret_lookback", "vol_lookback"])
 
+    mode = str(params.get("MODE", "both")).lower()
+    z_min_short = float(params.get("Z_MIN_SHORT", params.get("ZSCORE_ENTRY", z_entry)))
+    z_min_long = float(params.get("Z_MIN_LONG", params.get("ZSCORE_ENTRY", z_entry)))
+
+    if mode == "fade_up_only":
+        events = events[(events["side"] == -1) & (events["z_score"] >= z_min_short)]
+    elif mode == "fade_down_only":
+        events = events[(events["side"] == 1) & (events["z_score"] <= -z_min_long)]
+    elif mode != "both":
+        raise ValueError(f"Unsupported MODE='{mode}'")
+
     events = _apply_cooldown_and_reset(events, z_score, cooldown_bars, z_reset, df.index)
 
     logger.debug("Detected %s events", len(events))
