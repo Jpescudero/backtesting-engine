@@ -84,3 +84,32 @@ def test_load_intraday_data_matches_case_insensitive_stem(tmp_path, base_params)
     df = load_intraday_data(symbol, 2020, 2020, base_params)
 
     assert not df.empty
+
+
+@pytest.mark.usefixtures("base_params")
+def test_load_intraday_data_fallbacks_to_symbol_prefix(tmp_path, base_params):
+    symbol = "TeSt"
+    data_dir = tmp_path / symbol
+    data_dir.mkdir()
+
+    npz_path = data_dir / "test.npz"
+    _create_npz(npz_path, start="2020-01-01")
+
+    df = load_intraday_data(symbol, 2020, 2020, base_params)
+
+    assert not df.empty
+
+
+@pytest.mark.usefixtures("base_params")
+def test_load_intraday_data_still_rejects_other_symbols(tmp_path, base_params):
+    symbol = "TEST"
+    data_dir = tmp_path / symbol
+    data_dir.mkdir()
+
+    other_dir = tmp_path / "OTHER"
+    other_dir.mkdir()
+
+    _create_npz(other_dir / "OTHER_1m.npz", start="2020-01-01")
+
+    with pytest.raises(FileNotFoundError):
+        load_intraday_data(symbol, 2020, 2020, base_params)

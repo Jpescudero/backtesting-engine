@@ -253,32 +253,60 @@ def load_intraday_data(symbol: str, start_year: int, end_year: int, params: dict
         explicit_suffix = bool(target_suffix)
         if explicit_suffix:
             allowed_suffixes = {target_suffix}
+        fallback_suffixes = {".parquet", ".pq", ".csv", ".txt", ".npz"}
 
-        def _collect_files(extensions: set[str]) -> list[Path]:
-            expected_stem_lower = expected_stem.lower() if expected_stem else None
+        def _stem_matches(candidate_stem: str, strict: bool) -> bool:
+            if not expected_stem:
+                return True
 
+            expected_stem_lower = expected_stem.lower()
+            candidate_stem_lower = candidate_stem.lower()
+
+            if candidate_stem == expected_stem or candidate_stem_lower == expected_stem_lower:
+                return True
+
+            if strict:
+                return False
+
+            simplified_expected = expected_stem_lower.replace("-", "").replace("_", "")
+            simplified_candidate = candidate_stem_lower.replace("-", "").replace("_", "")
+
+            if simplified_candidate == simplified_expected:
+                return True
+
+            symbol_lower = symbol.lower()
+            return simplified_candidate.startswith(symbol_lower)
+
+        def _collect_files(extensions: set[str], strict: bool) -> list[Path]:
             return sorted(
                 candidate
                 for candidate in path.rglob("*")
                 if candidate.is_file()
                 and candidate.suffix.lower() in extensions
-                and (
-                    not expected_stem
-                    or candidate.stem == expected_stem
-                    or candidate.stem.lower() == expected_stem_lower
-                )
+                and _stem_matches(candidate.stem, strict=strict)
             )
 
-        files = _collect_files(allowed_suffixes)
+        files = _collect_files(allowed_suffixes, strict=True)
 
         if not files and explicit_suffix:
-            fallback_suffixes = {".parquet", ".pq", ".csv", ".txt", ".npz"}
-            files = _collect_files(fallback_suffixes)
+            files = _collect_files(fallback_suffixes, strict=True)
             if files:
                 logger.warning(
                     "No files with expected suffix '%s' found under %s; using fallback formats.",
                     target_suffix,
                     path,
+                )
+
+        if not files:
+            relaxed_extensions = fallback_suffixes if explicit_suffix else allowed_suffixes
+            files = _collect_files(relaxed_extensions, strict=False)
+            if files:
+                logger.warning(
+                    "No files matching expected pattern '%s' found under %s; "
+                    "loading files that start with symbol '%s'.",
+                    resolved_pattern,
+                    path,
+                    symbol,
                 )
 
         if not files:
