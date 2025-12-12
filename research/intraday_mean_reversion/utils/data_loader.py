@@ -65,6 +65,10 @@ def _resolve_data_path(symbol: str, params: dict[str, Any]) -> Path:
     candidates: list[Path] = []
     resolved_filename = base_path / resolved_pattern
 
+    def _add_candidate(path: Path) -> None:
+        if path not in candidates:
+            candidates.append(path)
+
     if base_path.is_absolute():
         hubs = [DATA_DIR, *DATA_MIRRORS]
         relative_path: Path | None = None
@@ -81,21 +85,37 @@ def _resolve_data_path(symbol: str, params: dict[str, Any]) -> Path:
         if relative_path is not None:
             for hub in hubs:
                 remapped = hub / relative_path
-                if remapped not in candidates:
-                    candidates.append(remapped)
+                _add_candidate(remapped)
         else:
-            candidates.append(resolved_filename)
+            _add_candidate(resolved_filename)
     else:
         primary = resolve_data_path(resolved_filename)
-        candidates.append(primary)
+        _add_candidate(primary)
 
         project_scoped = PROJECT_ROOT / resolved_filename
-        if project_scoped not in candidates:
-            candidates.append(project_scoped)
+        _add_candidate(project_scoped)
+
+    for existing in list(candidates):
+        nested_with_symbol = existing.parent / symbol / existing.name
+        _add_candidate(nested_with_symbol)
 
     for candidate in candidates:
         if candidate.exists():
             return candidate
+
+    search_roots: list[Path] = []
+    if base_path.exists():
+        search_roots.append(base_path)
+    elif base_path.parent.exists():
+        search_roots.append(base_path.parent)
+
+    for root in search_roots:
+        matches: list[Path] = sorted(root.rglob(resolved_filename.name))
+        if resolved_pattern != resolved_filename.name:
+            matches.extend(sorted(root.rglob(resolved_pattern)))
+        for match in matches:
+            if match.is_file():
+                return match
 
     return candidates[0]
 
