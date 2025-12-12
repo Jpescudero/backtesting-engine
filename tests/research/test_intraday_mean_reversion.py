@@ -1,6 +1,7 @@
 import logging
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
 import pytest
 
@@ -94,6 +95,65 @@ def test_load_intraday_data_filters_and_deduplicates(tmp_path: Path) -> None:
     assert loaded.index.is_monotonic_increasing
     assert len(loaded) == 2
     assert loaded.loc[timestamps[1], "volume"] == 50
+
+
+def test_load_intraday_data_reads_npz(tmp_path: Path) -> None:
+    data_root = tmp_path / "Market Data" / "npz" / "NDXm"
+    data_root.mkdir(parents=True)
+    file_path = data_root / "NDXm_all_1m.npz"
+
+    timestamps = pd.date_range("2020-01-01 09:00", periods=2, freq="T", tz="UTC")
+    np.savez(
+        file_path,
+        ts=timestamps.view("int64"),
+        o=np.array([10.0, 11.0]),
+        h=np.array([10.5, 11.5]),
+        l=np.array([9.5, 10.5]),
+        c=np.array([10.2, 11.2]),
+        v=np.array([1000, 1100]),
+    )
+
+    params = {
+        "DATA_PATH": str(data_root.parent),
+        "DATA_FILE_PATTERN": "{symbol}_all_1m.npz",
+        "START_YEAR": 2020,
+        "END_YEAR": 2020,
+    }
+
+    loaded = load_intraday_data("NDXm", 2020, 2020, params)
+
+    assert loaded.index.tzinfo is not None
+    assert loaded.shape == (2, 5)
+    assert loaded.iloc[0]["close"] == 10.2
+
+
+def test_load_intraday_data_falls_back_on_mismatched_pattern(tmp_path: Path) -> None:
+    data_root = tmp_path / "Market Data" / "npz" / "NDXm"
+    data_root.mkdir(parents=True)
+    file_path = data_root / "NDXm_all_1m.npz"
+
+    timestamps = pd.date_range("2020-01-01 09:00", periods=1, freq="T", tz="UTC")
+    np.savez(
+        file_path,
+        ts=timestamps.view("int64"),
+        o=np.array([10.0]),
+        h=np.array([10.5]),
+        l=np.array([9.5]),
+        c=np.array([10.2]),
+        v=np.array([1000]),
+    )
+
+    params = {
+        "DATA_PATH": str(data_root.parent),
+        "DATA_FILE_PATTERN": "{symbol}_all_1m.parquet",
+        "START_YEAR": 2020,
+        "END_YEAR": 2020,
+    }
+
+    loaded = load_intraday_data("NDXm", 2020, 2020, params)
+
+    assert loaded.shape == (1, 5)
+    assert loaded.iloc[0]["close"] == 10.2
 
 
 def test_load_intraday_data_resolves_via_data_hubs(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
