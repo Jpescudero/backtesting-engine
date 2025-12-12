@@ -50,17 +50,13 @@ def _relative_to_casefold(path: Path, base: Path) -> Path | None:
     return Path(*remainder)
 
 
-def _resolve_data_path(symbol: str, params: dict[str, Any]) -> Path:
+def _resolve_data_path(symbol: str, base_path: Path, resolved_pattern: str) -> Path:
     """Resolve the data file path using data hubs and project fallbacks.
 
     The function honors the active data hub, its mirrors, and project-relative
     paths. Absolute paths that point into a hub are remapped across available
     mirrors before failing over to the provided location.
     """
-
-    base_path = Path(params["DATA_PATH"])
-    pattern = str(params["DATA_FILE_PATTERN"])
-    resolved_pattern = pattern.format(symbol=symbol)
 
     candidates: list[Path] = []
     resolved_filename = base_path / resolved_pattern
@@ -120,6 +116,30 @@ def _resolve_data_path(symbol: str, params: dict[str, Any]) -> Path:
     return candidates[0]
 
 
+def _find_symbol_directory(base_path: Path, symbol: str) -> Path | None:
+    """Locate a directory named after the symbol within candidate roots.
+
+    The search considers both the configured ``DATA_PATH`` and its parent
+    (useful when the configured path is a sibling like ``.../data`` but the
+    actual files live under ``.../parquet/ticks/<symbol>``).
+    """
+
+    search_roots: list[Path] = []
+    if base_path.exists():
+        search_roots.append(base_path)
+    if base_path.parent.exists():
+        search_roots.append(base_path.parent)
+
+    lower_symbol = symbol.lower()
+    for root in search_roots:
+        if root.name.lower() == lower_symbol:
+            return root
+        for candidate in root.rglob("*"):
+            if candidate.is_dir() and candidate.name.lower() == lower_symbol:
+                return candidate
+    return None
+
+
 def _ensure_datetime_index(df: pd.DataFrame) -> pd.DataFrame:
     if isinstance(df.index, pd.DatetimeIndex):
         return df
@@ -166,7 +186,9 @@ def load_intraday_data(symbol: str, start_year: int, end_year: int, params: dict
     Returns
     -------
     pandas.DataFrame
-        DataFrame indexed by datetime with OHLCV columns.
+        DataFrame indexed by datetime with OHLCV columns. If ``DATA_PATH``
+        points to a directory, all matching files under that directory (and
+        a symbol-named subdirectory, if present) are loaded and concatenated.
 
     Raises
     ------
@@ -176,20 +198,54 @@ def load_intraday_data(symbol: str, start_year: int, end_year: int, params: dict
         If the data lacks required columns or datetime information.
     """
 
-    data_path = _resolve_data_path(symbol, params)
-    if not data_path.exists():
-        raise FileNotFoundError(
-            f"Data file for symbol '{symbol}' not found at {data_path}. "
-            "Ensure the path and pattern are correct."
-        )
+    base_path = Path(params["DATA_PATH"])
+    pattern = str(params["DATA_FILE_PATTERN"])
+    resolved_pattern = pattern.format(symbol=symbol)
 
-    suffix = data_path.suffix.lower()
-    if suffix in {".parquet", ".pq"}:
-        df = pd.read_parquet(data_path)
-    elif suffix in {".csv", ".txt"}:
-        df = pd.read_csv(data_path)
-    else:
+    data_path = _resolve_data_path(symbol, base_path, resolved_pattern)
+    data_exists = data_path.exists()
+
+    def _read_file(path: Path) -> pd.DataFrame:
+        suffix = path.suffix.lower()
+        if suffix in {".parquet", ".pq"}:
+            return pd.read_parquet(path)
+        if suffix in {".csv", ".txt"}:
+            return pd.read_csv(path)
         raise ValueError(f"Unsupported data file format: {suffix}")
+
+    def _load_directory(path: Path) -> pd.DataFrame:
+        target_suffix = Path(resolved_pattern).suffix.lower()
+        allowed_suffixes = {".parquet", ".pq", ".csv", ".txt"}
+        if target_suffix:
+            allowed_suffixes = {target_suffix}
+
+        files = sorted(
+            candidate
+            for candidate in path.rglob("*")
+            if candidate.is_file() and candidate.suffix.lower() in allowed_suffixes
+        )
+        if not files:
+            raise FileNotFoundError(
+                f"No data files found for symbol '{symbol}' under directory {path}. "
+                "Ensure the path and pattern are correct."
+            )
+
+        frames = [_read_file(file) for file in files]
+        return pd.concat(frames, ignore_index=False)
+
+    if data_exists and data_path.is_dir():
+        df = _load_directory(data_path)
+    elif data_exists:
+        df = _read_file(data_path)
+    else:
+        symbol_dir = _find_symbol_directory(base_path, symbol)
+        if symbol_dir is not None:
+            df = _load_directory(symbol_dir)
+        else:
+            raise FileNotFoundError(
+                f"Data file for symbol '{symbol}' not found at {data_path}. "
+                "Ensure the path and pattern are correct."
+            )
 
     df = _ensure_datetime_index(df)
     missing_columns = _EXPECTED_COLUMNS - set(df.columns)
