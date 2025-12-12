@@ -10,6 +10,7 @@ from typing import Any
 import pandas as pd
 
 from research.intraday_mean_reversion.optimizers.grid_search import GridSearchOptimizer
+from research.intraday_mean_reversion.optimizers.ml_meta_labeling import run_meta_labeling
 from research.intraday_mean_reversion.utils.config_loader import load_params
 from research.intraday_mean_reversion.utils.data_loader import load_intraday_data
 from research.intraday_mean_reversion.utils.events import detect_mean_reversion_events
@@ -40,10 +41,20 @@ def _parse_args() -> argparse.Namespace:
         type=Path,
         help="Output directory for artifacts",
     )
+    parser.add_argument("--run-ml", action="store_true", help="Execute ML meta-labeling pipeline")
+    parser.add_argument("--ml-only", action="store_true", help="Run only ML pipeline after labeling")
+    parser.add_argument(
+        "--ml-proba-threshold",
+        type=float,
+        default=None,
+        help="Override ML probability threshold for filtering",
+    )
     return parser.parse_args()
 
 
-def _run_single(df: pd.DataFrame, base_params: dict[str, Any], output_dir: Path) -> None:
+def _run_single(
+    df: pd.DataFrame, base_params: dict[str, Any], output_dir: Path, run_ml: bool = False
+) -> None:
     logger.info("Detecting events...")
     events = detect_mean_reversion_events(df, base_params)
     logger.info("Labeling events...")
@@ -95,6 +106,12 @@ def _run_single(df: pd.DataFrame, base_params: dict[str, Any], output_dir: Path)
         recommended_threshold=selected_threshold,
     )
 
+    if run_ml:
+        ml_output_dir = output_dir / "ml"
+        if base_params.get("ML_PROBA_THRESHOLD_OVERRIDE") is not None:
+            base_params["ML_PROBA_THRESHOLD"] = base_params["ML_PROBA_THRESHOLD_OVERRIDE"]
+        run_meta_labeling(df, labeled, base_params, ml_output_dir)
+
     logger.info("Summary metrics: %s", metrics)
 
 
@@ -140,12 +157,16 @@ def main() -> None:
     data = load_intraday_data(params["SYMBOL"], int(params["START_YEAR"]), int(params["END_YEAR"]), params)
 
     output_dir = Path(args.output_dir)
-    if args.run_grid_search:
+    run_ml = bool(params.get("RUN_ML", False)) or args.run_ml or args.ml_only
+    if args.ml_proba_threshold is not None:
+        params["ML_PROBA_THRESHOLD_OVERRIDE"] = args.ml_proba_threshold
+
+    if args.run_grid_search and not args.ml_only:
         logger.info("Running grid search...")
         _run_grid_search(data, params, output_dir)
     else:
         logger.info("Running single evaluation...")
-        _run_single(data, params, output_dir)
+        _run_single(data, params, output_dir, run_ml=run_ml)
 
 
 if __name__ == "__main__":

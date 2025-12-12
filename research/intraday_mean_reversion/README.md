@@ -16,6 +16,10 @@ Resumen del conjunto de scripts usados para explorar estrategias intradía de re
 - `utils/plotting.py`: genera gráficos de distribución de retornos, relación z-score/éxito y mapas de calor de búsquedas de parámetros.
 - `utils/config_loader.py`: lectura de archivos de parámetros tipo `KEY=VALUE`, convirtiendo tipos numéricos y listas cuando es posible.
 - `utils/costs.py`: helpers para aplicar costes de transacción en las métricas/eventos.
+- `optimizers/ml_meta_labeling.py`: pipeline de meta-labeling que construye features sin leakage, entrena un clasificador (Logistic Regression o RandomForest), valida con walk-forward y guarda predicciones y comparativas de uplift.
+- `utils/ml_features.py`: generación de la matriz de características alineada con el timestamp del evento (tiempo del día, tendencia, momentum reciente, distancia al máximo intradía, etc.).
+- `utils/ml_cv.py`: utilidades de validación temporal (walk-forward con embargo opcional) y métricas de clasificación.
+- `utils/ml_reporting.py`: resumen baseline vs filtrado por ML (P&L diario, Sharpe, histograma de probabilidades, curvas ROC y gráficos de uplift).
 - `__init__.py`: marca el paquete de investigación y expone utilidades compartidas.
 
 ## Uso básico
@@ -30,6 +34,7 @@ Resumen del conjunto de scripts usados para explorar estrategias intradía de re
    python -m research.intraday_mean_reversion.intraday_mean_reversion_research --run-grid-search
    ```
 4. Revisa los artefactos (CSV y gráficos) en el directorio `output/` o en el que especifiques con `--output-dir`.
+5. Para activar el meta-labeling como filtro de eventos, añade `RUN_ML=true` en el archivo de parámetros o pasa el flag `--run-ml` (o `--ml-only`). Los artefactos de ML se guardan en `output/ml/`.
 
 ## Modos asimétricos y umbrales recomendados
 
