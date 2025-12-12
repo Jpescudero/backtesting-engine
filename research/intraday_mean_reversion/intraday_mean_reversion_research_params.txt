@@ -12,6 +12,9 @@ LOOKBACK_MINUTES=20
 ZSCORE_ENTRY=1.5       # disparo de evento
 ZSCORE_EXIT=0.0        # opcional, para salida por z-score
 HOLD_TIME_BARS=5       # horizonte fijo en velas 1m
+COOLDOWN_BARS=20       # barras de espera tras un evento
+Z_RESET=0.5            # umbral para resetear la señal
+Z_EPS=1e-12            # epsilon numérico en el cálculo del z-score
 
 # Filtros
 SESSION_START_TIME=15:35
@@ -28,6 +31,8 @@ SPREAD_POINTS=1.0
 COMMISSION_PER_CONTRACT=2.5
 SLIPPAGE_POINTS=0.3
 CONTRACT_MULTIPLIER=1.0
+COMMISSION_CASH_PER_CONTRACT=2.5
+LOSS_TAIL_X=0.001
 
 # Optimización
 GRID_LOOKBACK_MINUTES=5,10,15,20,30,60

@@ -9,6 +9,8 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
+from .metrics import compute_zscore_bin_stats
+
 
 _OUTPUT_DIRNAME = "output"
 
@@ -51,29 +53,71 @@ def plot_return_distribution(labeled_events: pd.DataFrame, output_path: Path, by
     plt.close()
 
 
-def plot_zscore_vs_success(labeled_events: pd.DataFrame, output_path: Path, bins: int = 20) -> None:
-    """Plot probability of success by z-score bin."""
+def plot_zscore_vs_success(
+    labeled_events: pd.DataFrame, output_path: Path, bins: int = 20, loss_tail_x: float = 0.001
+) -> pd.DataFrame:
+    """Plot probability of success by z-score bin with confidence intervals."""
+
+    bin_stats = compute_zscore_bin_stats(labeled_events, bins=bins, loss_tail_x=loss_tail_x)
 
     _prepare_output_path(output_path)
     plt.figure(figsize=(8, 4))
 
-    z_scores = labeled_events["z_score"]
-    success = labeled_events["is_r_H_net_positive"].astype(float)
-    bin_edges = np.linspace(z_scores.min(), z_scores.max(), bins + 1)
+    centers = (bin_stats["z_bin_left"] + bin_stats["z_bin_right"]) / 2
+    widths = bin_stats["z_bin_right"] - bin_stats["z_bin_left"]
 
-    binned = pd.cut(z_scores, bins=bin_edges, include_lowest=True)
-    success_by_bin = success.groupby(binned, observed=False).mean().fillna(0)
-    centers = success_by_bin.index.map(lambda interval: interval.mid)
-    widths = bin_edges[1:] - bin_edges[:-1]
+    plt.bar(centers, bin_stats["p_hat"], width=widths, align="center", color="steelblue", alpha=0.7)
+    lower_error = bin_stats["p_hat"] - bin_stats["ci_low"]
+    upper_error = bin_stats["ci_high"] - bin_stats["p_hat"]
+    plt.errorbar(
+        centers,
+        bin_stats["p_hat"],
+        yerr=[lower_error, upper_error],
+        fmt="none",
+        ecolor="black",
+        capsize=3,
+    )
 
-    plt.bar(centers, success_by_bin.values, width=widths, align="center")
+    for x, y, n in zip(centers, bin_stats["p_hat"], bin_stats["n"]):
+        plt.text(x, y + 0.02, f"n={n}", ha="center", va="bottom", fontsize=7, rotation=90)
 
-    plt.title("P(r_H_net > 0) by z-score bin")
+    plt.title("P(r_H_net > 0) by z-score bin (95% CI)")
     plt.xlabel("z-score")
     plt.ylabel("Probability of success")
     plt.tight_layout()
     plt.savefig(output_path)
     plt.close()
+
+    return bin_stats
+
+
+def plot_zscore_vs_expected_return(
+    labeled_events: pd.DataFrame, output_path: Path, bins: int = 20, loss_tail_x: float = 0.001
+) -> pd.DataFrame:
+    """Plot expected net return by z-score bin with trade counts."""
+
+    bin_stats = compute_zscore_bin_stats(labeled_events, bins=bins, loss_tail_x=loss_tail_x)
+
+    _prepare_output_path(output_path)
+    plt.figure(figsize=(8, 4))
+
+    centers = (bin_stats["z_bin_left"] + bin_stats["z_bin_right"]) / 2
+    widths = bin_stats["z_bin_right"] - bin_stats["z_bin_left"]
+
+    plt.bar(centers, bin_stats["E_r_H_net"], width=widths, align="center", color="darkorange", alpha=0.7)
+
+    for x, y, n in zip(centers, bin_stats["E_r_H_net"], bin_stats["n"]):
+        plt.text(x, y, f"n={n}", ha="center", va="bottom", fontsize=7, rotation=90)
+
+    plt.axhline(0, color="black", linestyle="--", linewidth=1)
+    plt.title("E[r_H_net] by z-score bin")
+    plt.xlabel("z-score")
+    plt.ylabel("E[r_H_net]")
+    plt.tight_layout()
+    plt.savefig(output_path)
+    plt.close()
+
+    return bin_stats
 
 
 def plot_heatmap_param_space(results_df: pd.DataFrame, output_path: Path, value_col: str) -> None:
