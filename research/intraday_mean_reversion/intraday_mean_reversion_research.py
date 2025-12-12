@@ -14,13 +14,14 @@ from research.intraday_mean_reversion.utils.config_loader import load_params
 from research.intraday_mean_reversion.utils.data_loader import load_intraday_data
 from research.intraday_mean_reversion.utils.events import detect_mean_reversion_events
 from research.intraday_mean_reversion.utils.labeling import label_events
-from research.intraday_mean_reversion.utils.metrics import compute_daily_pnl, compute_metrics
+from research.intraday_mean_reversion.utils.metrics import compute_daily_pnl, compute_metrics, compute_zscore_bin_stats
 from research.intraday_mean_reversion.utils.plotting import (
     plot_heatmap_param_space,
     plot_return_distribution,
     plot_zscore_vs_expected_return,
     plot_zscore_vs_success,
 )
+from research.intraday_mean_reversion.utils.thresholding import recommend_thresholds_from_bins
 
 logger = logging.getLogger(__name__)
 
@@ -51,6 +52,7 @@ def _run_single(df: pd.DataFrame, base_params: dict[str, Any], output_dir: Path)
     metrics = compute_metrics(labeled)
     daily_pnl = compute_daily_pnl(labeled)
     loss_tail_x = float(base_params.get("LOSS_TAIL_X", 0.001))
+    z_bins = int(base_params.get("Z_BINNING_NBINS", 20))
 
     output_dir.mkdir(parents=True, exist_ok=True)
     labeled.to_csv(output_dir / "labeled_events.csv")
@@ -58,11 +60,40 @@ def _run_single(df: pd.DataFrame, base_params: dict[str, Any], output_dir: Path)
     daily_pnl.to_csv(output_dir / "daily_pnl.csv", index=False)
 
     plot_return_distribution(labeled, output_dir / "return_distribution.png", by_side=True)
-    bin_stats = plot_zscore_vs_success(labeled, output_dir / "zscore_vs_success.png", loss_tail_x=loss_tail_x)
-    plot_zscore_vs_expected_return(
-        labeled, output_dir / "zscore_expected_return.png", loss_tail_x=loss_tail_x
+    bin_stats = compute_zscore_bin_stats(labeled, bins=z_bins, loss_tail_x=loss_tail_x)
+    recommendation = recommend_thresholds_from_bins(bin_stats, base_params)
+    logger.info(
+        "Recommended thresholds (mode=%s): Z_MIN_SHORT=%s | Z_MIN_LONG=%s",
+        recommendation.mode,
+        recommendation.recommended_z_min_short,
+        recommendation.recommended_z_min_long,
     )
+
+    selected_threshold = None
+    if recommendation.mode == "fade_up_only":
+        selected_threshold = recommendation.recommended_z_min_short
+    elif recommendation.mode == "fade_down_only":
+        selected_threshold = -recommendation.recommended_z_min_long if recommendation.recommended_z_min_long else None
+
     bin_stats.to_csv(output_dir / "zscore_bins.csv", index=False)
+    recommendation.accepted_bins.to_csv(output_dir / "recommended_thresholds.csv", index=False)
+
+    plot_zscore_vs_success(
+        labeled,
+        output_dir / "zscore_vs_success.png",
+        bins=z_bins,
+        loss_tail_x=loss_tail_x,
+        bin_stats=bin_stats,
+        recommended_threshold=selected_threshold,
+    )
+    plot_zscore_vs_expected_return(
+        labeled,
+        output_dir / "zscore_expected_return.png",
+        bins=z_bins,
+        loss_tail_x=loss_tail_x,
+        bin_stats=bin_stats,
+        recommended_threshold=selected_threshold,
+    )
 
     logger.info("Summary metrics: %s", metrics)
 
