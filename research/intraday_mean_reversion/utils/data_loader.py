@@ -103,6 +103,20 @@ def _resolve_data_path(symbol: str, params: dict[str, Any]) -> Path:
         if candidate.exists():
             return candidate
 
+    search_roots: list[Path] = []
+    if base_path.exists():
+        search_roots.append(base_path)
+    elif base_path.parent.exists():
+        search_roots.append(base_path.parent)
+
+    for root in search_roots:
+        matches: list[Path] = sorted(root.rglob(resolved_filename.name))
+        if resolved_pattern != resolved_filename.name:
+            matches.extend(sorted(root.rglob(resolved_pattern)))
+        for match in matches:
+            if match.is_file():
+                return match
+
     return candidates[0]
 
 

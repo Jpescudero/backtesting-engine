@@ -244,6 +244,40 @@ def test_load_intraday_data_searches_symbol_subdirectory(tmp_path: Path) -> None
     assert loaded.iloc[1]["close"] == 1.95
 
 
+def test_load_intraday_data_searches_sibling_directories(tmp_path: Path) -> None:
+    base_root = tmp_path / "Market Data"
+    data_path = base_root / "data"
+    actual_path = base_root / "parquet" / "ticks"
+    symbol = "NDXm"
+
+    parquet_dir = actual_path / symbol
+    parquet_dir.mkdir(parents=True)
+
+    data_file = parquet_dir / f"{symbol}_1m.csv"
+    df = pd.DataFrame(
+        {
+            "timestamp": pd.date_range("2020-01-01 00:00", periods=2, freq="min"),
+            "open": [1.0, 2.0],
+            "high": [1.1, 2.1],
+            "low": [0.9, 1.9],
+            "close": [1.05, 1.95],
+            "volume": [100, 200],
+        }
+    )
+    df.to_csv(data_file, index=False)
+
+    params = {
+        "DATA_PATH": str(data_path),
+        "DATA_FILE_PATTERN": "{symbol}_1m.csv",
+        "START_YEAR": 2020,
+        "END_YEAR": 2020,
+    }
+
+    loaded = load_intraday_data(symbol, 2020, 2020, params)
+
+    assert loaded.iloc[1]["volume"] == 200
+
+
 def test_events_labeling_and_metrics(tmp_path: Path) -> None:
     timestamps = pd.date_range("2020-01-01 09:00", periods=5, freq="min")
     prices = [100.0, 100.0, 90.0, 95.0, 100.0]
