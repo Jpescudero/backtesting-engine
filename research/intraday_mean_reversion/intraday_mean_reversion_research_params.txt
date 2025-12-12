@@ -1,5 +1,5 @@
 # Instrumento y horizonte temporal
-SYMBOL=NDX
+SYMBOL=NDXm
 START_YEAR=2018
 END_YEAR=2022
 
