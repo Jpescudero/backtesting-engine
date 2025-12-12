@@ -76,8 +76,8 @@ def plot_zscore_vs_success(
     widths = bin_stats["z_bin_right"] - bin_stats["z_bin_left"]
 
     plt.bar(centers, bin_stats["p_hat"], width=widths, align="center", color="steelblue", alpha=0.7)
-    lower_error = bin_stats["p_hat"] - bin_stats["ci_low"]
-    upper_error = bin_stats["ci_high"] - bin_stats["p_hat"]
+    lower_error = np.clip(bin_stats["p_hat"] - bin_stats["ci_low"], a_min=0.0, a_max=None)
+    upper_error = np.clip(bin_stats["ci_high"] - bin_stats["p_hat"], a_min=0.0, a_max=None)
     plt.errorbar(
         centers,
         bin_stats["p_hat"],
