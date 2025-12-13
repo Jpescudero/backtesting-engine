@@ -98,9 +98,9 @@ src\
   engine\
     # Motor de backtesting (Numba, señales, SL/TP, etc.)
 
-    core.py
-      # BacktestConfig, BacktestResult, motor numba, run_backtest_with_signals
-      GitHub: https://github.com/Jpescudero/backtesting-engine/blob/main/src/engine/core.py
+  core.py
+        # BacktestConfig, BacktestResult (gross + net), CostModel integration, run_backtest_with_signals
+        GitHub: https://github.com/Jpescudero/backtesting-engine/blob/main/src/engine/core.py
 
   analytics\
     # Métricas, reporting y plots
@@ -270,3 +270,4 @@ PARQUET_BARS_1M_DIR = PARQUET_DIR\bars_1m\
 NPZ_DIR          = DATA_DIR\npz\
 NPZ_NDXM_DIR     = NPZ_DIR\NDXm\
 OTHER_DATA_DIR   = DATA_DIR\other\
+\nconfig/costs/ - Centralized transaction cost YAML

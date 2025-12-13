@@ -2,12 +2,13 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-from typing import Any, Dict, List, Mapping, Tuple
+from dataclasses import asdict, dataclass
+from typing import Any, Dict, List, Mapping, Optional, Tuple
 
 import numpy as np
 from numba import njit
 
+from src.costs import CostModel
 from src.data.feeds import OHLCVArrays
 
 # =====================
@@ -22,11 +23,11 @@ class BacktestConfig:
     """
 
     initial_cash: float = 100_000.0
-    commission_per_trade: float = 1.0  # comisión fija por operación (entrada o salida)
     trade_size: float = 1.0  # contratos/unidades por operación
     min_trade_size: float = 0.01  # tamaño mínimo permitido por contrato/lote
     max_trade_size: float = 1000.0  # límite superior para el tamaño por operación
-    slippage: float = 0.0  # slippage en puntos
+    cost_config_path: str = "config/costs/costs.yaml"
+    cost_instrument: Optional[str] = None
 
     # Gestión de riesgo
     sl_pct: float = 0.01  # stop loss a -1%
@@ -52,6 +53,8 @@ class BacktestResult:
     position: float  # posición final
     trade_log: Dict[str, np.ndarray]  # arrays con info de los trades
     extra: Dict[str, Any]  # parámetros y metadatos
+    equity_net: np.ndarray | None = None
+    cash_net: float | None = None
     snapshots: List["BacktestSnapshot"] | None = None
     state_log: "BacktestStateLog" | None = None
 
@@ -223,7 +226,6 @@ def _example_strategy_long_on_up_move(
 def _calculate_affordable_qty(
     available_cash: float,
     price_per_unit: float,
-    commission_per_trade: float,
     desired_qty: float,
     min_trade_size: float,
 ) -> float:
@@ -233,7 +235,7 @@ def _calculate_affordable_qty(
     La cantidad resultante se ajusta a múltiplos de min_trade_size para permitir
     operar con fracciones de contrato (p.ej. lotes de 0.01).
     """
-    effective_cash = available_cash - commission_per_trade
+    effective_cash = available_cash
     if effective_cash <= 0.0 or price_per_unit <= 0.0 or desired_qty <= 0.0:
         return 0.0
 
@@ -371,10 +373,8 @@ def _backtest_with_risk(
     v: np.ndarray,
     position_sizes: np.ndarray,
     initial_cash: float,
-    commission_per_trade: float,
     trade_size: float,
     min_trade_size: float,
-    slippage: float,
     entry_threshold: float,
     sl_pct: float,
     tp_pct: float,
@@ -474,11 +474,10 @@ def _backtest_with_risk(
 
             if reason != 0:
                 # Cerrar posición
-                trade_price = exit_level - slippage
+                trade_price = exit_level
                 cash += trade_price * position
-                cash -= commission_per_trade
 
-                realized_pnl = (trade_price - entry_price) * position - commission_per_trade * 1.0
+                realized_pnl = (trade_price - entry_price) * position
                 hold_bars = bars_in_trade
 
                 if trade_count < max_trades:
@@ -503,11 +502,10 @@ def _backtest_with_risk(
 
         # Señal de venta: cerrar por señal contraria
         if sig == -1 and position > 0.0:
-            trade_price = price - slippage
+            trade_price = price
             cash += trade_price * position
-            cash -= commission_per_trade
 
-            realized_pnl = (trade_price - entry_price) * position - commission_per_trade * 1.0
+            realized_pnl = (trade_price - entry_price) * position
             hold_bars = i - entry_bar_idx
 
             if trade_count < max_trades:
@@ -527,17 +525,15 @@ def _backtest_with_risk(
 
         # Señal de compra: abrir si no hay posición
         if sig == 1 and position == 0.0:
-            trade_price = price + slippage
+            trade_price = price
             qty = _calculate_affordable_qty(
                 available_cash=cash,
                 price_per_unit=trade_price,
-                commission_per_trade=commission_per_trade,
                 desired_qty=trade_size,
                 min_trade_size=min_trade_size,
             )
             if qty > 0.0:
                 cash -= trade_price * qty
-                cash -= commission_per_trade
                 position = qty
                 entry_price = trade_price
                 entry_bar_idx = i
@@ -571,6 +567,7 @@ def _backtest_with_risk(
 def run_backtest_basic(
     data: OHLCVArrays,
     config: BacktestConfig | None = None,
+    cost_model: CostModel | None = None,
 ) -> BacktestResult:
     """
     Ejecuta un backtest con:
@@ -614,10 +611,8 @@ def run_backtest_basic(
         v=data.v,
         position_sizes=position_sizes,
         initial_cash=config.initial_cash,
-        commission_per_trade=config.commission_per_trade,
         trade_size=config.trade_size,
         min_trade_size=config.min_trade_size,
-        slippage=config.slippage,
         entry_threshold=config.entry_threshold,
         sl_pct=config.sl_pct,
         tp_pct=config.tp_pct,
@@ -637,13 +632,13 @@ def run_backtest_basic(
             "exit_reason": trade_exit_reason[:trade_count],
         }
 
+    equity_net, cash_net, trade_log, cost_summary = _apply_costs(cost_model, trade_log, equity, cash)
+
     extra: Dict[str, Any] = {
         "initial_cash": config.initial_cash,
-        "commission_per_trade": config.commission_per_trade,
         "trade_size": config.trade_size,
         "min_trade_size": config.min_trade_size,
         "max_trade_size": config.max_trade_size,
-        "slippage": config.slippage,
         "sl_pct": config.sl_pct,
         "tp_pct": config.tp_pct,
         "risk_per_trade_pct": config.risk_per_trade_pct,
@@ -657,6 +652,10 @@ def run_backtest_basic(
         "stop_losses": stop_losses,
         "take_profits": take_profits,
     }
+    if cost_model is not None:
+        extra["cost_model"] = asdict(cost_model.config)
+    if cost_summary:
+        extra["costs"] = cost_summary
 
     return BacktestResult(
         equity=equity,
@@ -664,7 +663,85 @@ def run_backtest_basic(
         position=position,
         trade_log=trade_log,
         extra=extra,
+        equity_net=equity_net,
+        cash_net=cash_net,
     )
+
+
+def _apply_costs(
+    cost_model: CostModel | None,
+    trade_log: Dict[str, np.ndarray],
+    equity: np.ndarray,
+    cash: float,
+) -> tuple[np.ndarray | None, float | None, Dict[str, np.ndarray], Dict[str, float]]:
+    """Aplica el modelo de costes al log de trades y devuelve métricas netas."""
+
+    if cost_model is None or not trade_log:
+        return None, None, trade_log, {}
+
+    pnl_gross = np.asarray(trade_log.get("pnl", []), dtype=float)
+    entries = np.asarray(trade_log.get("entry_price", []), dtype=float)
+    exits = np.asarray(trade_log.get("exit_price", []), dtype=float)
+    qty = np.asarray(trade_log.get("qty", []), dtype=float)
+    exit_idx = np.asarray(trade_log.get("exit_idx", []), dtype=np.int64)
+
+    n_trades = pnl_gross.shape[0]
+    if n_trades == 0:
+        return None, None, trade_log, {}
+
+    pnl_net = np.empty_like(pnl_gross)
+    pnl_gross_out = pnl_gross.copy()
+    return_gross = np.zeros_like(pnl_gross)
+    return_net = np.zeros_like(pnl_gross)
+    cost_values = np.zeros_like(pnl_gross)
+    commission = np.zeros_like(pnl_gross)
+    spread_cost = np.zeros_like(pnl_gross)
+    slippage_cost = np.zeros_like(pnl_gross)
+    cost_returns = np.zeros_like(pnl_gross)
+
+    for i in range(n_trades):
+        side = "long" if qty[i] >= 0 else "short"
+        trade_qty = abs(qty[i])
+        breakdown = cost_model.breakdown(float(entries[i]), float(exits[i]), side, qty=trade_qty)
+        commission[i] = breakdown["commission"]
+        spread_cost[i] = breakdown["spread"]
+        slippage_cost[i] = breakdown["slippage"]
+        cost_values[i] = breakdown["total_cost"]
+        cost_returns[i] = breakdown.get("cost_return", 0.0)
+
+        pnl_net[i] = pnl_gross[i] - cost_values[i]
+        notional = abs(entries[i]) * cost_model.config.contract_multiplier * trade_qty
+        if notional > 0:
+            return_gross[i] = pnl_gross[i] / notional
+            return_net[i] = pnl_net[i] / notional
+
+    trade_log_enhanced = {
+        **trade_log,
+        "pnl_gross": pnl_gross_out,
+        "pnl_net": pnl_net,
+        "pnl": pnl_net,
+        "return_gross": return_gross,
+        "return_net": return_net,
+        "cost": cost_values,
+        "commission": commission,
+        "spread_cost": spread_cost,
+        "slippage_cost": slippage_cost,
+        "cost_return": cost_returns,
+    }
+
+    equity_net = equity.copy()
+    for idx, cost_val in zip(exit_idx, cost_values):
+        if 0 <= idx < equity_net.shape[0]:
+            equity_net[idx:] -= cost_val
+
+    cost_summary = {
+        "total_cost": float(cost_values.sum()),
+        "commission": float(commission.sum()),
+        "spread": float(spread_cost.sum()),
+        "slippage": float(slippage_cost.sum()),
+    }
+
+    return equity_net, float(cash - cost_values.sum()), trade_log_enhanced, cost_summary
 
 
 # =====================
@@ -686,11 +763,9 @@ def _backtest_with_risk_from_signals(
     position_sizes: np.ndarray,
     atr: np.ndarray,
     initial_cash: float,
-    commission_per_trade: float,
     trade_size: float,
     min_trade_size: float,
     max_trade_size: float,
-    slippage: float,
     sl_pct: float,
     tp_pct: float,
     risk_per_trade_pct: float,
@@ -836,11 +911,10 @@ def _backtest_with_risk_from_signals(
 
             if reason != 0:
                 # Cerrar posición
-                trade_price = exit_level - slippage
+                trade_price = exit_level
                 cash += trade_price * position
-                cash -= commission_per_trade
 
-                realized_pnl = (trade_price - entry_price) * position - commission_per_trade * 1.0
+                realized_pnl = (trade_price - entry_price) * position
                 hold_bars = bars_in_trade
 
                 if trade_count < max_trades:
@@ -866,11 +940,10 @@ def _backtest_with_risk_from_signals(
 
         # Señal de venta: cerrar por señal contraria
         if sig == -1 and position > 0.0:
-            trade_price = price - slippage
+            trade_price = price
             cash += trade_price * position
-            cash -= commission_per_trade
 
-            realized_pnl = (trade_price - entry_price) * position - commission_per_trade * 1.0
+            realized_pnl = (trade_price - entry_price) * position
             hold_bars = i - entry_bar_idx
 
             if trade_count < max_trades:
@@ -892,7 +965,7 @@ def _backtest_with_risk_from_signals(
 
         # Señal de compra: abrir posición si estamos flat
         if sig == 1 and position == 0.0:
-            trade_price = price + slippage
+            trade_price = price
             atr_val = atr[i] if i < atr.shape[0] else np.nan
             has_atr = np.isfinite(atr_val)
 
@@ -936,14 +1009,12 @@ def _backtest_with_risk_from_signals(
             qty = _calculate_affordable_qty(
                 available_cash=cash,
                 price_per_unit=trade_price,
-                commission_per_trade=commission_per_trade,
                 desired_qty=desired_qty,
                 min_trade_size=min_trade_size,
             )
             if qty > 0.0:
                 position = qty
                 cash -= trade_price * position
-                cash -= commission_per_trade
                 entry_price = trade_price
                 entry_bar_idx = i
 
@@ -1012,6 +1083,7 @@ def run_backtest_with_signals(
     config: BacktestConfig | None = None,
     snapshot_interval: int | None = None,
     resume_from: BacktestSnapshot | None = None,
+    cost_model: CostModel | None = None,
 ) -> BacktestResult:
     """
     Ejecuta un backtest usando un array de señales externo (int8: -1, 0, +1).
@@ -1105,11 +1177,9 @@ def run_backtest_with_signals(
         position_sizes=position_sizes,
         atr=atr,
         initial_cash=config.initial_cash,
-        commission_per_trade=config.commission_per_trade,
         trade_size=config.trade_size,
         min_trade_size=config.min_trade_size,
         max_trade_size=config.max_trade_size,
-        slippage=config.slippage,
         sl_pct=config.sl_pct,
         tp_pct=config.tp_pct,
         risk_per_trade_pct=config.risk_per_trade_pct,
@@ -1151,13 +1221,13 @@ def run_backtest_with_signals(
             "exit_reason": trade_exit_reason[:trade_count],
         }
 
+    equity_net, cash_net, trade_log, cost_summary = _apply_costs(cost_model, trade_log, equity, cash)
+
     extra: Dict[str, Any] = {
         "initial_cash": config.initial_cash,
-        "commission_per_trade": config.commission_per_trade,
         "trade_size": config.trade_size,
         "min_trade_size": config.min_trade_size,
         "max_trade_size": config.max_trade_size,
-        "slippage": config.slippage,
         "sl_pct": config.sl_pct,
         "tp_pct": config.tp_pct,
         "risk_per_trade_pct": config.risk_per_trade_pct,
@@ -1176,6 +1246,10 @@ def run_backtest_with_signals(
         extra["snapshot_interval"] = snapshot_interval
     if resume_from is not None:
         extra["resumed_from_snapshot"] = resume_from.index
+    if cost_model is not None:
+        extra["cost_model"] = asdict(cost_model.config)
+    if cost_summary:
+        extra["costs"] = cost_summary
 
     return BacktestResult(
         equity=equity,
@@ -1185,4 +1259,6 @@ def run_backtest_with_signals(
         extra=extra,
         snapshots=snapshots,
         state_log=state_log,
+        equity_net=equity_net,
+        cash_net=cash_net,
     )

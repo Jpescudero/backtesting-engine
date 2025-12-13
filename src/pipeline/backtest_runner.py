@@ -10,6 +10,7 @@ import matplotlib
 import numpy as np
 
 from src.analytics.reporting import equity_to_series, trades_to_dataframe
+from src.costs import CostModel
 from src.config.paths import REPORTS_DIR
 from src.data.feeds import NPZOHLCVFeed, OHLCVArrays
 from src.engine.core import BacktestConfig, BacktestSnapshot, run_backtest_with_signals
@@ -73,6 +74,8 @@ def _build_run_metadata(
         "strategy_name": config.strategy_name,
         "strategy_params": strategy_params_dict,
         "backtest_config": asdict(config.backtest_config),
+        "cost_config_path": str(config.cost_config_path),
+        "cost_instrument": config.cost_instrument,
         "train_years": config.train_years,
         "test_years": config.test_years,
         "use_test_years": config.use_test_years,
@@ -138,18 +141,18 @@ class BacktestRunConfig:
     resume_snapshot: Optional[Path] = None
     run_metadata_path: Optional[Path] = None
     replay_metadata: Optional[Path] = None
+    cost_config_path: Path = Path("config/costs/costs.yaml")
+    cost_instrument: Optional[str] = None
     strategy_params: StrategyParamsType = field(default_factory=StrategyParams)
     backtest_config: BacktestConfig = field(
         default_factory=lambda: BacktestConfig(
             initial_cash=100_000.0,
-            commission_per_trade=1.0,
             trade_size=1.0,
             min_trade_size=0.01,
             max_trade_size=100.0,
             risk_per_trade_pct=0.0025,
             atr_stop_mult=1.0,
             atr_tp_mult=2.0,
-            slippage=0.0,
             sl_pct=0.01,
             tp_pct=0.02,
             point_value=1.0,
@@ -269,6 +272,11 @@ def run_single_backtest(config: BacktestRunConfig) -> BacktestArtifacts:
 
     timings: Dict[str, float] = {}
     base_reports_dir = config.reports_dir or (REPORTS_DIR / config.symbol).resolve()
+
+    instrument = config.cost_instrument or config.symbol
+    config.backtest_config.cost_instrument = instrument
+    config.backtest_config.cost_config_path = str(config.cost_config_path)
+    cost_model = CostModel.from_yaml(str(config.cost_config_path), instrument)
 
     logger.info("Capital inicial configurado: %s", config.backtest_config.initial_cash)
 
@@ -397,6 +405,7 @@ def run_single_backtest(config: BacktestRunConfig) -> BacktestArtifacts:
             config=config.backtest_config,
             snapshot_interval=config.snapshot_interval,
             resume_from=resume_snapshot,
+            cost_model=cost_model,
         )
     logger.info(
         "Cash final: %s | Posición final: %s | Número de trades: %s",
@@ -522,6 +531,8 @@ def load_run_config_from_metadata(path: Path | str) -> BacktestRunConfig:
         snapshot_interval=meta.get("snapshot_interval"),
         snapshot_path=Path(meta["snapshot_path"]) if meta.get("snapshot_path") else None,
         resume_snapshot=Path(meta["resume_snapshot"]) if meta.get("resume_snapshot") else None,
+        cost_config_path=Path(meta.get("cost_config_path", "config/costs/costs.yaml")),
+        cost_instrument=meta.get("cost_instrument"),
         strategy_params=strategy_params,
         backtest_config=backtest_cfg,
     )

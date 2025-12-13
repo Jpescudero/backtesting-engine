@@ -6,9 +6,10 @@ Latest highlights:
 
 - 🔄 **End-to-end data pipeline**: automatically generate tick parquet files, 1-minute OHLCV CSVs, and NPZ arrays ready for Numba. Convenience helpers (`ensure_ticks_and_csv`, `ensure_npz_from_csv`, `prepare_npz_dataset`) make sure all artifacts exist before a run.
 - 🧭 **Strategy catalog**: includes the **Microstructure Reversal** strategy (EMA/ATR context, pullback + exhaustion detection, structure-break filter, bullish shift candle), the **Microstructure Sweep** (stop-hunt + absorption with volume/volatility filters), and the existing opening-sweep example.
-- ⚙️ **Configurable backtesting core**: Numba-accelerated engine with stop-loss / take-profit, max duration, commission, slippage, entry thresholds, and position sizing via `BacktestConfig`.
+- ⚙️ **Cost-model aware backtesting core**: Numba-accelerated engine with stop-loss / take-profit, max duration, centralized transaction costs (via `config/costs/costs.yaml` + `CostModel`), gross/net PnL, entry thresholds, and position sizing through `BacktestConfig`.
 - 📈 **Analytics & reports**: automatic conversion to pandas structures, equity/trade metrics, and lightweight Excel + JSON export with size-safe helpers. Generates equity + monthly trades plots and best/worst trade snapshots.
-- 🎛️ **CLI orchestration**: `main.py` wraps a full pipeline (data prep → signals → backtest → reports) with flags for symbol, timeframe, strategy tuning, SL/TP, slippage/commission, train/test years, and headless plotting.
+- 🎛️ **CLI orchestration**: `main.py` wraps a full pipeline (data prep → signals → backtest → reports) with flags for symbol, timeframe, strategy tuning, SL/TP, train/test years, and headless plotting.
+- 🧾 **Centralized costs**: a single YAML file (`config/costs/costs.yaml`) drives all spread/commission/slippage assumptions via `src.costs.CostModel` for both research and engine workflows.
 - 🗂️ **Train/test slicing**: load specific years from NPZ feeds to isolate training vs testing periods without touching raw files.
 
 The framework aims to be a **research-ready, production-oriented foundation** for exploring intraday pattern-based strategies—especially those relying on liquidity events and high-volume reversal behavior suitable for DARWIN-style systematic trading.
@@ -32,7 +33,7 @@ The framework aims to be a **research-ready, production-oriented foundation** fo
 | `src/pipeline/data_pipeline.py`        | High-level helpers to ensure CSV/NPZ artifacts exist |
 | `src/pipeline/backtest_runner.py`      | Orchestrates data prep, signals, backtests, and reports |
 | `src/pipeline/reporting.py`            | Analytics, plots, and export helpers |
-| `src/engine/core.py`                   | Numba-powered backtesting engine |
+| `src/engine/core.py`                   | Numba-powered backtesting engine (gross + net PnL via centralized `CostModel`) |
 | `src/analytics/metrics.py`             | Performance metrics |
 | `src/analytics/reporting.py`           | Convert results → pandas structures |
 | `src/analytics/plots.py`               | Equity/trade visualization tools |
@@ -222,7 +223,7 @@ signals = sweep.generate_signals(data, external_atr=lower_tf_atr).signals
 Implemented in `src/engine/core.py`. Key features:
 
 - Vectorized, Numba-accelerated execution for thousands of trades.
-- Stop-loss / take-profit, maximum bars in trade, entry thresholds, commission, slippage, and position sizing via `BacktestConfig`.
+- Stop-loss / take-profit, maximum bars in trade, entry thresholds, and centralized transaction costs (gross + net) via `BacktestConfig` + `CostModel`.
 - Returns a structured `BacktestResult` with cash, position, equity curve, trade logs, and metadata.
 
 ```python
@@ -233,15 +234,15 @@ from src.utils import compute_position_size
 
 config = BacktestConfig(
     initial_cash=100_000,
-    commission_per_trade=1.0,
-    slippage=0.0,
     trade_size=1.0,
     sl_pct=0.01,
     tp_pct=0.02,
     max_bars_in_trade=60,
+    cost_config_path="config/costs/costs.yaml",
+    cost_instrument="NDX",
 )
 
-result = run_backtest_with_signals(data, signals, config)
+result = run_backtest_with_signals(data, signals, config, cost_model=CostModel.from_yaml("config/costs/costs.yaml", "NDX"))
 ```
 
 To run strategies with their own risk parameters, pre-compute position sizes per bar and

@@ -7,10 +7,13 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
+from src.costs import CostModel
 from .costs import compute_trade_cost_breakdown
 
 
-def label_events(df: pd.DataFrame, events: pd.DataFrame, params: dict[str, Any]) -> pd.DataFrame:
+def label_events(
+    df: pd.DataFrame, events: pd.DataFrame, params: dict[str, Any], cost_model: CostModel
+) -> pd.DataFrame:
     """Attach outcome labels and costs to detected events.
 
     Parameters
@@ -21,7 +24,9 @@ def label_events(df: pd.DataFrame, events: pd.DataFrame, params: dict[str, Any])
     events : pandas.DataFrame
         Events DataFrame returned by ``detect_mean_reversion_events``.
     params : dict[str, Any]
-        Parameter dictionary containing ``HOLD_TIME_BARS`` and cost fields.
+        Parameter dictionary containing ``HOLD_TIME_BARS``.
+    cost_model : CostModel
+        Centralized cost model used to compute transaction costs.
 
     Returns
     -------
@@ -48,9 +53,17 @@ def label_events(df: pd.DataFrame, events: pd.DataFrame, params: dict[str, Any])
     r_next = (next_close_after_entry / entry_prices - 1.0) * events["side"]
     r_H_raw = (exit_prices_raw / entry_prices - 1.0) * events["side"]
 
-    cost_breakdowns = [compute_trade_cost_breakdown(params, e, x) for e, x in zip(entry_prices, exit_prices_raw)]
+    sides = np.where(events["side"] > 0, "long", "short")
+    cost_breakdowns = [
+        compute_trade_cost_breakdown(cost_model, float(e), float(x), str(s))
+        for e, x, s in zip(entry_prices, exit_prices_raw, sides)
+    ]
     cost_df = pd.DataFrame(cost_breakdowns, index=events.index)
-    r_H_net = r_H_raw - cost_df["cost_total_return"]
+    r_H_net = r_H_raw - cost_df["cost_return"]
+
+    notional = entry_prices * cost_model.config.contract_multiplier
+    pnl_gross = r_H_raw * notional
+    pnl_net = r_H_net * notional
 
     labeled = events.copy()
     labeled["entry_timestamp"] = df.index.to_series().shift(-1).reindex(events.index)
@@ -59,9 +72,13 @@ def label_events(df: pd.DataFrame, events: pd.DataFrame, params: dict[str, Any])
     labeled["r_next"] = r_next
     labeled["is_next_bar_positive"] = r_next > 0
     labeled["r_H_raw"] = r_H_raw
-    labeled["is_r_H_positive"] = r_H_raw > 0
     labeled["r_H_net"] = r_H_net
+    labeled["return_gross"] = r_H_raw
+    labeled["return_net"] = r_H_net
+    labeled["is_r_H_positive"] = r_H_raw > 0
     labeled["is_r_H_net_positive"] = r_H_net > 0
+    labeled["pnl_gross"] = pnl_gross
+    labeled["pnl_net"] = pnl_net
     labeled = pd.concat([labeled, cost_df], axis=1)
 
     return labeled.dropna(subset=["r_next", "r_H_raw", "r_H_net"])

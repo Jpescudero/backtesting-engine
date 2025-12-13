@@ -14,6 +14,7 @@ from research.intraday_mean_reversion.optimizers.ml_meta_labeling import run_met
 from research.intraday_mean_reversion.utils.config_loader import load_params
 from research.intraday_mean_reversion.utils.data_loader import load_intraday_data
 from research.intraday_mean_reversion.utils.events import detect_mean_reversion_events
+from research.intraday_mean_reversion.utils.costs import load_cost_model
 from research.intraday_mean_reversion.utils.labeling import label_events
 from research.intraday_mean_reversion.utils.metrics import compute_daily_pnl, compute_metrics, compute_zscore_bin_stats
 from research.intraday_mean_reversion.utils.plotting import (
@@ -57,8 +58,9 @@ def _run_single(
 ) -> None:
     logger.info("Detecting events...")
     events = detect_mean_reversion_events(df, base_params)
+    cost_model = load_cost_model(base_params)
     logger.info("Labeling events...")
-    labeled = label_events(df, events, base_params)
+    labeled = label_events(df, events, base_params, cost_model)
     logger.info("Computing metrics...")
     metrics = compute_metrics(labeled)
     daily_pnl = compute_daily_pnl(labeled)
@@ -70,7 +72,8 @@ def _run_single(
     pd.DataFrame([metrics]).to_csv(output_dir / "metrics.csv", index=False)
     daily_pnl.to_csv(output_dir / "daily_pnl.csv", index=False)
 
-    plot_return_distribution(labeled, output_dir / "return_distribution.png", by_side=True)
+    plot_return_distribution(labeled, output_dir / "return_distribution_gross.png", by_side=True, return_col="r_H_raw")
+    plot_return_distribution(labeled, output_dir / "return_distribution_net.png", by_side=True, return_col="r_H_net")
     bin_stats = compute_zscore_bin_stats(labeled, bins=z_bins, loss_tail_x=loss_tail_x)
     recommendation = recommend_thresholds_from_bins(bin_stats, base_params)
     logger.info(
@@ -91,19 +94,39 @@ def _run_single(
 
     plot_zscore_vs_success(
         labeled,
-        output_dir / "zscore_vs_success.png",
+        output_dir / "zscore_vs_success_net.png",
         bins=z_bins,
         loss_tail_x=loss_tail_x,
         bin_stats=bin_stats,
         recommended_threshold=selected_threshold,
+        return_col="r_H_net",
+    )
+    plot_zscore_vs_success(
+        labeled,
+        output_dir / "zscore_vs_success_gross.png",
+        bins=z_bins,
+        loss_tail_x=loss_tail_x,
+        bin_stats=bin_stats,
+        recommended_threshold=selected_threshold,
+        return_col="r_H_raw",
     )
     plot_zscore_vs_expected_return(
         labeled,
-        output_dir / "zscore_expected_return.png",
+        output_dir / "zscore_expected_return_net.png",
         bins=z_bins,
         loss_tail_x=loss_tail_x,
         bin_stats=bin_stats,
         recommended_threshold=selected_threshold,
+        return_col="r_H_net",
+    )
+    plot_zscore_vs_expected_return(
+        labeled,
+        output_dir / "zscore_expected_return_gross.png",
+        bins=z_bins,
+        loss_tail_x=loss_tail_x,
+        bin_stats=bin_stats,
+        recommended_threshold=selected_threshold,
+        return_col="r_H_raw",
     )
 
     if run_ml:
@@ -139,8 +162,9 @@ def _run_grid_search(df: pd.DataFrame, base_params: dict[str, Any], output_dir: 
 
 def _objective(df: pd.DataFrame, base_params: dict[str, Any], override: dict[str, Any]) -> dict[str, Any]:
     params = {**base_params, **override}
+    cost_model = load_cost_model(params)
     events = detect_mean_reversion_events(df, params)
-    labeled = label_events(df, events, params)
+    labeled = label_events(df, events, params, cost_model)
     metrics = compute_metrics(labeled)
     return metrics
 

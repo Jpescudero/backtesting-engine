@@ -7,6 +7,8 @@ from typing import Iterable, List, Tuple
 
 import numpy as np
 
+from src.costs import CostModel
+
 
 @dataclass
 class ExecutionParameters:
@@ -20,6 +22,7 @@ class ExecutionParameters:
     fixed_cost: float = 0.0
     variable_cost_pct: float = 0.0
     cancellation_prob: float = 0.0
+    cost_model: CostModel | None = None
     seed: int | None = None
 
 
@@ -113,8 +116,18 @@ class ExecutionSimulator:
             self._compute_slippage_price(side, avg_price, filled_qty) if filled_qty > 0 else 0.0
         )
         executed_value = slipped_price * filled_qty
-
-        total_cost = self.params.fixed_cost + executed_value * self.params.variable_cost_pct
+        side_literal = "long" if side.lower() == "buy" else "short"
+        ref_price = slipped_price if slipped_price > 0 else mid_price
+        if self.params.cost_model is not None:
+            breakdown = self.params.cost_model.breakdown(
+                ref_price,
+                ref_price,
+                side_literal,
+                qty=filled_qty,
+            )
+            total_cost = breakdown["total_cost"] / 2.0
+        else:
+            total_cost = self.params.fixed_cost + executed_value * self.params.variable_cost_pct
 
         return ExecutionResult(
             filled_qty=filled_qty,
@@ -135,8 +148,6 @@ PREDEFINED_SCENARIOS = {
         book_depth_levels=3,
         base_slippage=0.0008,
         liquidity_slippage=0.0003,
-        fixed_cost=1.5,
-        variable_cost_pct=0.0004,
         cancellation_prob=0.35,
     ),
     "bajo_volumen": ExecutionParameters(
@@ -145,8 +156,6 @@ PREDEFINED_SCENARIOS = {
         book_depth_levels=2,
         base_slippage=0.0004,
         liquidity_slippage=0.0006,
-        fixed_cost=0.5,
-        variable_cost_pct=0.0002,
         cancellation_prob=0.6,
     ),
 }

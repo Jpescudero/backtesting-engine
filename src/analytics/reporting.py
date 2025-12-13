@@ -12,16 +12,21 @@ from src.engine.core import BacktestResult
 def equity_to_series(
     result: BacktestResult,
     data: OHLCVArrays,
+    equity_field: str = "equity",
 ) -> pd.Series:
     """
     Convierte la equity (np.ndarray) en una serie de pandas indexada por timestamp.
     """
     ts = pd.to_datetime(data.ts, unit="ns", utc=True)
 
+    equity_raw = getattr(result, equity_field)
+    if equity_raw is None:
+        return pd.Series(dtype=float)
+
     # Hay feeds con timestamps duplicados (p. ej. al concatenar ficheros), lo que
     # provoca trazos verticales en la curva de equity. Nos quedamos con el valor
     # más reciente de cada timestamp y aseguramos orden creciente.
-    equity_series = pd.Series(result.equity, index=ts, name="equity")
+    equity_series = pd.Series(equity_raw, index=ts, name=equity_field)
     equity_series = equity_series.replace([np.inf, -np.inf], np.nan).dropna()
     equity_series = equity_series.groupby(level=0).last().sort_index()
 
@@ -67,6 +72,8 @@ def trades_to_dataframe(
     entry_time = ts[entry_idx]
     exit_time = ts[exit_idx]
 
+    pnl_net = log.get("pnl_net", log.get("pnl"))
+    pnl_gross = log.get("pnl_gross", log.get("pnl"))
     df = pd.DataFrame(
         {
             "entry_time": entry_time,
@@ -76,7 +83,16 @@ def trades_to_dataframe(
             "entry_price": log["entry_price"],
             "exit_price": log["exit_price"],
             "qty": log["qty"],
-            "pnl": log["pnl"],
+            "pnl_net": pnl_net,
+            "pnl_gross": pnl_gross,
+            "pnl": pnl_net,
+            "return_gross": log.get("return_gross"),
+            "return_net": log.get("return_net"),
+            "cost": log.get("cost"),
+            "commission": log.get("commission"),
+            "spread_cost": log.get("spread_cost"),
+            "slippage_cost": log.get("slippage_cost"),
+            "cost_return": log.get("cost_return"),
             "holding_bars": log["holding_bars"],
             "exit_reason_code": log["exit_reason"],
         }

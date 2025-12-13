@@ -20,7 +20,9 @@ def _prepare_output_path(output_path: Path) -> Path:
     return output_path
 
 
-def plot_return_distribution(labeled_events: pd.DataFrame, output_path: Path, by_side: bool = False) -> None:
+def plot_return_distribution(
+    labeled_events: pd.DataFrame, output_path: Path, by_side: bool = False, return_col: str = "r_H_net"
+) -> None:
     """Plot histogram of net returns with optional side separation.
 
     Parameters
@@ -38,14 +40,14 @@ def plot_return_distribution(labeled_events: pd.DataFrame, output_path: Path, by
 
     if by_side:
         for side, color in [(1, "green"), (-1, "red")]:
-            subset = labeled_events.loc[labeled_events["side"] == side, "r_H_net"]
+            subset = labeled_events.loc[labeled_events["side"] == side, return_col]
             plt.hist(subset, bins=50, alpha=0.6, label=f"side={side}", color=color)
     else:
-        plt.hist(labeled_events["r_H_net"], bins=50, alpha=0.7, color="steelblue")
+        plt.hist(labeled_events[return_col], bins=50, alpha=0.7, color="steelblue")
 
     plt.axvline(0, color="black", linestyle="--", linewidth=1)
-    plt.title("Distribution of net returns")
-    plt.xlabel("r_H_net")
+    plt.title(f"Distribution of {return_col} returns")
+    plt.xlabel(return_col)
     plt.ylabel("Frequency")
     plt.legend()
     plt.tight_layout()
@@ -60,6 +62,7 @@ def plot_zscore_vs_success(
     loss_tail_x: float = 0.001,
     bin_stats: pd.DataFrame | None = None,
     recommended_threshold: float | None = None,
+    return_col: str = "r_H_net",
 ) -> pd.DataFrame:
     """Plot probability of success by z-score bin with confidence intervals."""
 
@@ -94,7 +97,7 @@ def plot_zscore_vs_success(
         plt.axvline(recommended_threshold, color="red", linestyle="--", linewidth=1.5, label="recommended")
         plt.legend()
 
-    plt.title("P(r_H_net > 0) by z-score bin (95% CI)")
+    plt.title(f"P({return_col} > 0) by z-score bin (95% CI)")
     plt.xlabel("z-score")
     plt.ylabel("Probability of success")
     plt.tight_layout()
@@ -111,6 +114,7 @@ def plot_zscore_vs_expected_return(
     loss_tail_x: float = 0.001,
     bin_stats: pd.DataFrame | None = None,
     recommended_threshold: float | None = None,
+    return_col: str = "r_H_net",
 ) -> pd.DataFrame:
     """Plot expected net return by z-score bin with trade counts."""
 
@@ -126,9 +130,10 @@ def plot_zscore_vs_expected_return(
     centers = (bin_stats["z_bin_left"] + bin_stats["z_bin_right"]) / 2
     widths = bin_stats["z_bin_right"] - bin_stats["z_bin_left"]
 
-    plt.bar(centers, bin_stats["E_r_H_net"], width=widths, align="center", color="darkorange", alpha=0.7)
+    expected_col = "E_r_H_net" if return_col == "r_H_net" else "E_r_H_raw"
+    plt.bar(centers, bin_stats[expected_col], width=widths, align="center", color="darkorange", alpha=0.7)
 
-    for x, y, n in zip(centers, bin_stats["E_r_H_net"], bin_stats["n"]):
+    for x, y, n in zip(centers, bin_stats[expected_col], bin_stats["n"]):
         plt.text(x, y, f"n={n}", ha="center", va="bottom", fontsize=7, rotation=90)
 
     plt.axhline(0, color="black", linestyle="--", linewidth=1)
@@ -136,9 +141,9 @@ def plot_zscore_vs_expected_return(
         plt.axvline(recommended_threshold, color="red", linestyle="--", linewidth=1.5, label="recommended")
         plt.legend()
 
-    plt.title("E[r_H_net] by z-score bin")
+    plt.title(f"E[{return_col}] by z-score bin")
     plt.xlabel("z-score")
-    plt.ylabel("E[r_H_net]")
+    plt.ylabel(f"E[{return_col}]")
     plt.tight_layout()
     plt.savefig(output_path)
     plt.close()

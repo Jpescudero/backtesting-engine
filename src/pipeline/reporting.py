@@ -28,12 +28,28 @@ class BacktestReports:
 
 
 def compute_analytics(result, data, equity_series=None, trades_df=None):
-    equity_series = equity_series if equity_series is not None else equity_to_series(result, data)
+    def _prefix_stats(stats: Dict, prefix: str) -> Dict:
+        return {f"{prefix}{k}": v for k, v in stats.items()}
+
+    equity_primary = equity_series
+    if equity_primary is None:
+        equity_field = "equity_net" if getattr(result, "equity_net", None) is not None else "equity"
+        equity_primary = equity_to_series(result, data, equity_field=equity_field)
+
+    equity_gross = equity_to_series(result, data, equity_field="equity")
     trades_df = trades_df if trades_df is not None else trades_to_dataframe(result, data)
-    equity_stats = equity_curve_metrics(equity_series)
-    trade_stats = trades_metrics(trades_df)
+
+    equity_stats = _prefix_stats(equity_curve_metrics(equity_gross), "gross_")
+    if getattr(result, "equity_net", None) is not None:
+        equity_net_series = equity_to_series(result, data, equity_field="equity_net")
+        equity_stats.update(_prefix_stats(equity_curve_metrics(equity_net_series), "net_"))
+
+    trade_stats = trades_metrics(trades_df, pnl_col="pnl", prefix="net_")
+    if "pnl_gross" in trades_df.columns:
+        trade_stats.update(trades_metrics(trades_df, pnl_col="pnl_gross", prefix="gross_"))
+
     level_stats = trade_level_stats(trades_df)
-    return equity_series, trades_df, equity_stats, trade_stats, level_stats
+    return equity_primary, trades_df, equity_stats, trade_stats, level_stats
 
 
 def generate_report_files(

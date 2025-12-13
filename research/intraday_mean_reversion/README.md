@@ -2,6 +2,9 @@
 
 Resumen del conjunto de scripts usados para explorar estrategias intradía de reversión a la media. El código vive en GitHub en: https://github.com/Jpescudero/backtesting-engine/tree/main/research/intraday_mean_reversion
 
+> Costes centralizados: todos los cálculos de comisiones/spread/slippage se cargan desde `config/costs/costs.yaml` mediante
+> `src.costs.CostModel`. No se deben definir costes en los scripts individuales.
+
 ## Estructura principal
 
 - `intraday_mean_reversion_research.py`: punto de entrada CLI. Carga parámetros, descarga/lee los datos intradía y ejecuta una evaluación simple o una búsqueda en rejilla (`--run-grid-search`). Genera métricas y gráficos en el directorio de salida. Incluye cálculo automático de umbrales recomendados a partir de estadísticas por bin de z-score y marcas en los gráficos de P(éxito) y esperanza.
