@@ -1034,8 +1034,8 @@ def _backtest_with_risk_from_signals(
                     tp_price = trade_price * (1.0 + tp_pct) if tp_pct > 0.0 else 0.0
                     use_atr_stops = False
 
-                # 3) Mark-to-market de la equity
-                equity[i] = cash + position * price
+        # 3) Mark-to-market de la equity
+        equity[i] = cash + position * price
 
         state_cash[i] = cash
         state_position[i] = position
