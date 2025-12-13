@@ -1,5 +1,5 @@
 # Instrumento y horizonte temporal
-SYMBOL=NDXm
+SYMBOL=SP500
 START_YEAR=2018
 END_YEAR=2022
 

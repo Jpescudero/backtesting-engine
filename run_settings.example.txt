@@ -1,7 +1,7 @@
 # Configuración de backtest (formato key=value)
 # Puedes copiar este archivo y ajustar los valores que necesites.
 # Símbolo o índice a probar y estrategia disponible
-symbol=NDXm
+symbol=SP500
 timeframe=1m
 strategy=opening_sweep_v4
 initial_cash=2000
