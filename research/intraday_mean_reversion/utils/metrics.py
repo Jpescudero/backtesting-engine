@@ -143,6 +143,7 @@ def compute_zscore_bin_stats(
                 "ci_low": ci_low,
                 "ci_high": ci_high,
                 "E_r_H_net": float(group["r_H_net"].mean()),
+                "E_r_H_raw": float(group["r_H_raw"].mean()),
                 "median_r_H_net": float(quantiles.loc[0.5]),
                 "q05": float(quantiles.loc[0.05]),
                 "q95": float(quantiles.loc[0.95]),
@@ -181,7 +182,10 @@ def compute_metrics(labeled_events: pd.DataFrame) -> dict[str, Any]:
             "p_H_raw_pos": float("nan"),
             "p_H_net_pos": float("nan"),
             "E_r_H_raw": float("nan"),
+            "E_r_H_gross": float("nan"),
             "E_r_H_net": float("nan"),
+            "E_pnl_gross": float("nan"),
+            "E_pnl_net": float("nan"),
             "median_r_H_net": float("nan"),
             "std_r_H_net": float("nan"),
             "pct5_r_H_net": float("nan"),
@@ -189,7 +193,6 @@ def compute_metrics(labeled_events: pd.DataFrame) -> dict[str, Any]:
             "pct75_r_H_net": float("nan"),
             "pct95_r_H_net": float("nan"),
             "avg_cost_total_return": float("nan"),
-            "avg_cost_total_points": float("nan"),
             "E_r_H_raw_over_cost": float("nan"),
             "sharpe_per_trade": float("nan"),
             "sharpe_net": float("nan"),
@@ -214,7 +217,10 @@ def compute_metrics(labeled_events: pd.DataFrame) -> dict[str, Any]:
     metrics["p_H_net_pos"] = _probability(labeled_events["is_r_H_net_positive"])
 
     metrics["E_r_H_raw"] = float(labeled_events["r_H_raw"].mean())
+    metrics["E_r_H_gross"] = metrics["E_r_H_raw"]
     metrics["E_r_H_net"] = float(labeled_events["r_H_net"].mean())
+    metrics["E_pnl_gross"] = float(labeled_events.get("pnl_gross", pd.Series(dtype=float)).mean())
+    metrics["E_pnl_net"] = float(labeled_events.get("pnl_net", pd.Series(dtype=float)).mean())
     metrics["median_r_H_net"] = float(labeled_events["r_H_net"].median())
     metrics["std_r_H_net"] = float(labeled_events["r_H_net"].std(ddof=0))
 
@@ -224,12 +230,9 @@ def compute_metrics(labeled_events: pd.DataFrame) -> dict[str, Any]:
     metrics["pct75_r_H_net"] = float(percentiles.loc[0.75])
     metrics["pct95_r_H_net"] = float(percentiles.loc[0.95])
 
-    cost_total = labeled_events.get("cost_total_return")
-    cost_points = labeled_events.get("cost_total_points")
+    cost_total = labeled_events.get("cost_return")
     avg_cost_return = float(cost_total.mean()) if cost_total is not None else float("nan")
-    avg_cost_points = float(cost_points.mean()) if cost_points is not None else float("nan")
     metrics["avg_cost_total_return"] = avg_cost_return
-    metrics["avg_cost_total_points"] = avg_cost_points
     metrics["E_r_H_raw_over_cost"] = (
         metrics["E_r_H_raw"] / avg_cost_return if avg_cost_return not in {0.0, float("nan")} else float("nan")
     )

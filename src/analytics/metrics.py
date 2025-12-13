@@ -122,7 +122,7 @@ def equity_curve_metrics(equity: pd.Series) -> Dict[str, Any]:
     }
 
 
-def trades_metrics(trades: pd.DataFrame) -> Dict[str, Any]:
+def trades_metrics(trades: pd.DataFrame, *, pnl_col: str = "pnl", prefix: str = "") -> Dict[str, Any]:
     """
     Métricas sobre el conjunto de trades:
       - número de trades
@@ -133,7 +133,7 @@ def trades_metrics(trades: pd.DataFrame) -> Dict[str, Any]:
       - porcentaje de salidas por SL/TP/time/signal
     """
     if trades is None or trades.empty:
-        return {
+        base = {
             "n_trades": 0,
             "winrate": np.nan,
             "avg_pnl": np.nan,
@@ -144,9 +144,10 @@ def trades_metrics(trades: pd.DataFrame) -> Dict[str, Any]:
             "avg_holding_bars": np.nan,
             "exit_reason_counts": {},
         }
+        return {f"{prefix}{k}": v for k, v in base.items()}
 
     n_trades = len(trades)
-    pnl = trades["pnl"]
+    pnl = trades[pnl_col]
 
     wins = pnl[pnl > 0]
     losses = pnl[pnl < 0]
@@ -176,7 +177,7 @@ def trades_metrics(trades: pd.DataFrame) -> Dict[str, Any]:
     if "exit_reason" in trades.columns:
         reason_counts = trades["exit_reason"].value_counts().to_dict()
 
-    return {
+    stats = {
         "n_trades": n_trades,
         "winrate": winrate,
         "avg_pnl": avg_pnl,
@@ -187,6 +188,7 @@ def trades_metrics(trades: pd.DataFrame) -> Dict[str, Any]:
         "avg_holding_bars": avg_holding_bars,
         "exit_reason_counts": reason_counts,
     }
+    return {f"{prefix}{k}": v for k, v in stats.items()}
 
 
 def trade_level_stats(trades: pd.DataFrame) -> Dict[str, Any]:

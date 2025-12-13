@@ -46,6 +46,14 @@ def _to_serializable(value: Any) -> Any:
     if isinstance(value, (np.floating, np.integer)):
         return float(value)
 
+    # Números complejos (Python o NumPy)
+    if isinstance(value, (complex, np.complexfloating)):
+        real_part = float(value.real)
+        imag_part = float(value.imag)
+        if imag_part == 0.0:
+            return real_part
+        return {"real": real_part, "imag": imag_part}
+
     # NumPy arrays -> resumen (no guardamos arrays enormes en JSON)
     if isinstance(value, np.ndarray):
         return {

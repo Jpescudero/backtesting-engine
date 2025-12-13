@@ -24,14 +24,22 @@ def plot_equity_curve(
     if ax is None:
         _, ax = plt.subplots()
 
-    eq = equity_to_series(result, data)
-    ax.plot(eq.index, eq.values)
+    eq_gross = equity_to_series(result, data, equity_field="equity")
+    eq_net = None
+    if getattr(result, "equity_net", None) is not None:
+        eq_net = equity_to_series(result, data, equity_field="equity_net")
+
+    ax.plot(eq_gross.index, eq_gross.values, label="Gross")
+    if eq_net is not None and not eq_net.empty:
+        ax.plot(eq_net.index, eq_net.values, label="Net")
+
     title = "Curva de Equity"
     if strategy_name:
         title = f"{title} - {strategy_name}"
     ax.set_title(title)
     ax.set_xlabel("Tiempo")
     ax.set_ylabel("Equity")
+    ax.legend()
 
     return ax
 

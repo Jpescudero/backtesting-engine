@@ -292,11 +292,21 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         default=None,
         help="Capital inicial; si no se indica se toma del config o 100k",
     )
-    parser.add_argument("--commission", type=float, default=1.0)
     parser.add_argument("--trade-size", type=float, default=1.0)
-    parser.add_argument("--slippage", type=float, default=0.0)
     parser.add_argument("--sl-pct", type=float, default=0.01)
     parser.add_argument("--tp-pct", type=float, default=0.02)
+    parser.add_argument(
+        "--costs-path",
+        type=str,
+        default="config/costs/costs.yaml",
+        help="Ruta al YAML de costes centralizado",
+    )
+    parser.add_argument(
+        "--cost-instrument",
+        type=str,
+        default=None,
+        help="Instrumento a cargar desde el YAML de costes (por defecto, el símbolo)",
+    )
     parser.add_argument("--max-bars", type=int, default=60, help="Máximo de velas en una operación")
     parser.add_argument("--entry-threshold", type=float, default=0.0)
     parser.add_argument(
@@ -438,8 +448,8 @@ def _print_run_context(run_config: BacktestRunConfig) -> None:
     header = [
         ("Símbolo/TF", f"{run_config.symbol} / {run_config.timeframe}"),
         ("Capital inicial", _format_money(cfg.initial_cash)),
-        ("Comisión por trade", _format_number(cfg.commission_per_trade)),
-        ("Slippage", _format_number(cfg.slippage)),
+        ("Instrumento costes", run_config.cost_instrument or run_config.symbol),
+        ("Archivo costes", str(run_config.cost_config_path)),
         ("Tamaño trade", _format_number(cfg.trade_size)),
         ("SL %", _format_number(cfg.sl_pct, pct=True)),
         ("TP %", _format_number(cfg.tp_pct, pct=True)),
@@ -478,12 +488,17 @@ def _print_run_context(run_config: BacktestRunConfig) -> None:
 
 
 def print_headline_kpis(equity_stats: dict, trade_stats: dict) -> None:
+    total_return = equity_stats.get("net_total_return", equity_stats.get("gross_total_return"))
+    max_drawdown = equity_stats.get("net_max_drawdown", equity_stats.get("gross_max_drawdown"))
+    sharpe = equity_stats.get("net_sharpe_ratio", equity_stats.get("gross_sharpe_ratio"))
+    n_trades = trade_stats.get("net_n_trades", trade_stats.get("n_trades"))
+    winrate = trade_stats.get("net_winrate", trade_stats.get("winrate"))
     kpis = [
-        ("Retorno total", equity_stats.get("total_return"), True),
-        ("Max drawdown", equity_stats.get("max_drawdown"), True),
-        ("Sharpe", equity_stats.get("sharpe_ratio"), False),
-        ("# trades", trade_stats.get("n_trades"), False),
-        ("Winrate", trade_stats.get("winrate"), True),
+        ("Retorno total", total_return, True),
+        ("Max drawdown", max_drawdown, True),
+        ("Sharpe", sharpe, False),
+        ("# trades", n_trades, False),
+        ("Winrate", winrate, True),
     ]
 
     print("\n=== KPIs rápidos ===")
@@ -831,19 +846,24 @@ def main(argv: Iterable[str] | None = None) -> None:
     else:
         backtest_config = BacktestConfig(
             initial_cash=initial_cash,
-            commission_per_trade=args.commission,
             trade_size=args.trade_size,
-            slippage=args.slippage,
             sl_pct=args.sl_pct,
             tp_pct=args.tp_pct,
             max_bars_in_trade=args.max_bars,
             entry_threshold=args.entry_threshold,
+            cost_config_path=args.costs_path,
+            cost_instrument=args.cost_instrument or symbol,
         )
 
     if strategy_name == "opening_sweep_v4":
         backtest_config.max_bars_in_trade = getattr(
             strategy_params, "max_horizon", backtest_config.max_bars_in_trade
         )
+
+    backtest_config.cost_config_path = args.costs_path or backtest_config.cost_config_path
+    backtest_config.cost_instrument = (
+        args.cost_instrument or backtest_config.cost_instrument or symbol
+    )
 
     seed_value = args.seed if args.seed is not None else (meta_config.seed if meta_config else None)
     snapshot_interval = (
@@ -881,6 +901,8 @@ def main(argv: Iterable[str] | None = None) -> None:
         resume_snapshot=resume_snapshot,
         run_metadata_path=run_metadata_path,
         replay_metadata=replay_metadata_path,
+        cost_config_path=Path(backtest_config.cost_config_path),
+        cost_instrument=backtest_config.cost_instrument,
         strategy_params=strategy_params,
         backtest_config=backtest_config,
     )
@@ -892,29 +914,34 @@ def main(argv: Iterable[str] | None = None) -> None:
     print_headline_kpis(artifacts.equity_stats, artifacts.trade_stats)
 
     equity_keys = [
-        "start_equity",
-        "end_equity",
-        "total_return",
-        "annualized_return",
-        "max_drawdown",
-        "return_drawdown_ratio",
-        "sharpe_ratio",
-        "sortino_ratio",
-        "volatility_annual",
-        "var_95_monthly",
-        "n_days",
-        "n_months",
+        "net_start_equity",
+        "net_end_equity",
+        "net_total_return",
+        "net_annualized_return",
+        "net_max_drawdown",
+        "net_return_drawdown_ratio",
+        "net_sharpe_ratio",
+        "net_sortino_ratio",
+        "net_volatility_annual",
+        "net_var_95_monthly",
+        "net_n_days",
+        "net_n_months",
+        "gross_total_return",
+        "gross_max_drawdown",
     ]
     trade_keys = [
-        "n_trades",
-        "winrate",
-        "avg_pnl",
-        "avg_win",
-        "avg_loss",
-        "payoff_ratio",
-        "expectancy_per_trade",
-        "avg_holding_bars",
-        "exit_reason_counts",
+        "net_n_trades",
+        "net_winrate",
+        "net_avg_pnl",
+        "net_avg_win",
+        "net_avg_loss",
+        "net_payoff_ratio",
+        "net_expectancy_per_trade",
+        "net_avg_holding_bars",
+        "net_exit_reason_counts",
+        "gross_n_trades",
+        "gross_winrate",
+        "gross_avg_pnl",
     ]
 
     print_metrics("Métricas de equity (tipo Darwinex)", artifacts.equity_stats, equity_keys)
