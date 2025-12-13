@@ -26,8 +26,8 @@ instruments:
   SP500:
     cost_type: "points"
     commission_per_side: 0.275
-    spread: 0.6
-    slippage: 0.1
+    spread: 0.65
+    slippage: 0.25
     contract_multiplier: 10
     venue: "Darwinex"
 
