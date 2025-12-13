@@ -7,14 +7,16 @@ import logging
 from pathlib import Path
 from typing import Any
 
+import numpy as np
 import pandas as pd
 
+from research.intraday_mean_reversion.market_regime import detect_mean_reversion_regime
 from research.intraday_mean_reversion.optimizers.grid_search import GridSearchOptimizer
 from research.intraday_mean_reversion.optimizers.ml_meta_labeling import run_meta_labeling
 from research.intraday_mean_reversion.utils.config_loader import load_params
+from research.intraday_mean_reversion.utils.costs import load_cost_model
 from research.intraday_mean_reversion.utils.data_loader import load_intraday_data
 from research.intraday_mean_reversion.utils.events import detect_mean_reversion_events
-from research.intraday_mean_reversion.utils.costs import load_cost_model
 from research.intraday_mean_reversion.utils.labeling import label_events
 from research.intraday_mean_reversion.utils.metrics import compute_daily_pnl, compute_metrics, compute_zscore_bin_stats
 from research.intraday_mean_reversion.utils.plotting import (
@@ -56,25 +58,42 @@ def _parse_args() -> argparse.Namespace:
 def _run_single(
     df: pd.DataFrame, base_params: dict[str, Any], output_dir: Path, run_ml: bool = False
 ) -> None:
+    logger.info("Detecting market regime...")
+    regime_flags = detect_mean_reversion_regime(df, base_params)
     logger.info("Detecting events...")
     events = detect_mean_reversion_events(df, base_params)
+    events = _attach_regime_to_events(events, regime_flags)
     cost_model = load_cost_model(base_params)
     logger.info("Labeling events...")
     labeled = label_events(df, events, base_params, cost_model)
+    executed_events = labeled[labeled["executed"]] if "executed" in labeled else labeled
     logger.info("Computing metrics...")
-    metrics = compute_metrics(labeled)
-    daily_pnl = compute_daily_pnl(labeled)
+    metrics = compute_metrics(executed_events)
+    daily_pnl = compute_daily_pnl(executed_events)
     loss_tail_x = float(base_params.get("LOSS_TAIL_X", 0.001))
     z_bins = int(base_params.get("Z_BINNING_NBINS", 20))
 
     output_dir.mkdir(parents=True, exist_ok=True)
     labeled.to_csv(output_dir / "labeled_events.csv")
+    regime_timeline = pd.DataFrame(
+        {
+            "is_mr_regime": regime_flags,
+            "regime": np.where(regime_flags, "mr", "no_mr"),
+        }
+    )
+    regime_timeline.to_csv(output_dir / "regime_flags.csv")
+    regime_stats = _build_regime_stats(regime_flags, labeled)
+    regime_stats.to_csv(output_dir / "regime_stats.csv", index=False)
     pd.DataFrame([metrics]).to_csv(output_dir / "metrics.csv", index=False)
     daily_pnl.to_csv(output_dir / "daily_pnl.csv", index=False)
 
-    plot_return_distribution(labeled, output_dir / "return_distribution_gross.png", by_side=True, return_col="r_H_raw")
-    plot_return_distribution(labeled, output_dir / "return_distribution_net.png", by_side=True, return_col="r_H_net")
-    bin_stats = compute_zscore_bin_stats(labeled, bins=z_bins, loss_tail_x=loss_tail_x)
+    plot_return_distribution(
+        executed_events, output_dir / "return_distribution_gross.png", by_side=True, return_col="r_H_raw"
+    )
+    plot_return_distribution(
+        executed_events, output_dir / "return_distribution_net.png", by_side=True, return_col="r_H_net"
+    )
+    bin_stats = compute_zscore_bin_stats(executed_events, bins=z_bins, loss_tail_x=loss_tail_x)
     recommendation = recommend_thresholds_from_bins(bin_stats, base_params)
     logger.info(
         "Recommended thresholds (mode=%s): Z_MIN_SHORT=%s | Z_MIN_LONG=%s",
@@ -93,7 +112,7 @@ def _run_single(
     recommendation.accepted_bins.to_csv(output_dir / "recommended_thresholds.csv", index=False)
 
     plot_zscore_vs_success(
-        labeled,
+        executed_events,
         output_dir / "zscore_vs_success_net.png",
         bins=z_bins,
         loss_tail_x=loss_tail_x,
@@ -102,7 +121,7 @@ def _run_single(
         return_col="r_H_net",
     )
     plot_zscore_vs_success(
-        labeled,
+        executed_events,
         output_dir / "zscore_vs_success_gross.png",
         bins=z_bins,
         loss_tail_x=loss_tail_x,
@@ -111,7 +130,7 @@ def _run_single(
         return_col="r_H_raw",
     )
     plot_zscore_vs_expected_return(
-        labeled,
+        executed_events,
         output_dir / "zscore_expected_return_net.png",
         bins=z_bins,
         loss_tail_x=loss_tail_x,
@@ -120,7 +139,7 @@ def _run_single(
         return_col="r_H_net",
     )
     plot_zscore_vs_expected_return(
-        labeled,
+        executed_events,
         output_dir / "zscore_expected_return_gross.png",
         bins=z_bins,
         loss_tail_x=loss_tail_x,
@@ -163,9 +182,12 @@ def _run_grid_search(df: pd.DataFrame, base_params: dict[str, Any], output_dir: 
 def _objective(df: pd.DataFrame, base_params: dict[str, Any], override: dict[str, Any]) -> dict[str, Any]:
     params = {**base_params, **override}
     cost_model = load_cost_model(params)
+    regime_flags = detect_mean_reversion_regime(df, params)
     events = detect_mean_reversion_events(df, params)
+    events = _attach_regime_to_events(events, regime_flags)
     labeled = label_events(df, events, params, cost_model)
-    metrics = compute_metrics(labeled)
+    executed_events = labeled[labeled["executed"]] if "executed" in labeled else labeled
+    metrics = compute_metrics(executed_events)
     return metrics
 
 
@@ -191,6 +213,64 @@ def main() -> None:
     else:
         logger.info("Running single evaluation...")
         _run_single(data, params, output_dir, run_ml=run_ml)
+
+
+def _attach_regime_to_events(events: pd.DataFrame, regime_flags: pd.Series) -> pd.DataFrame:
+    """Annotate events with market regime and execution flag.
+
+    Parameters
+    ----------
+    events : pd.DataFrame
+        Output from :func:`detect_mean_reversion_events`.
+    regime_flags : pd.Series
+        Boolean series indicating allowed periods for mean reversion.
+
+    Returns
+    -------
+    pd.DataFrame
+        Events with ``regime`` (``mr``/``no_mr``) and ``executed`` boolean
+        columns.
+    """
+
+    if events.empty:
+        return events.assign(regime=pd.Series(dtype=str), executed=pd.Series(dtype=bool))
+
+    aligned_regime = regime_flags.reindex(events.index).fillna(False).astype(bool)
+    enriched = events.copy()
+    enriched["regime"] = np.where(aligned_regime, "mr", "no_mr")
+    enriched["executed"] = aligned_regime
+    return enriched
+
+
+def _build_regime_stats(regime_flags: pd.Series, labeled_events: pd.DataFrame) -> pd.DataFrame:
+    """Create a compact summary of market regime utilization and performance."""
+
+    rows: list[dict[str, Any]] = []
+    time_in_mr_pct = float(regime_flags.mean() * 100) if not regime_flags.empty else 0.0
+    executed_trades_pct = (
+        float(labeled_events.get("executed", pd.Series(dtype=bool)).mean() * 100)
+        if not labeled_events.empty
+        else 0.0
+    )
+    rows.append({"section": "summary", "regime": "all", "metric": "time_in_mr_pct", "value": time_in_mr_pct})
+    rows.append(
+        {"section": "summary", "regime": "all", "metric": "executed_trades_pct", "value": executed_trades_pct}
+    )
+
+    for regime_label in ("mr", "no_mr"):
+        subset = labeled_events[labeled_events.get("regime") == regime_label]
+        metrics = compute_metrics(subset)
+        for metric_key in ("n_events", "p_H_net_pos", "E_r_H_net", "median_r_H_net", "sharpe_net"):
+            rows.append(
+                {
+                    "section": "regime_metrics",
+                    "regime": regime_label,
+                    "metric": metric_key,
+                    "value": metrics.get(metric_key),
+                }
+            )
+
+    return pd.DataFrame(rows)
 
 
 if __name__ == "__main__":

@@ -16,6 +16,30 @@ COOLDOWN_BARS=20       # barras de espera tras un evento
 Z_RESET=0.5            # umbral para resetear la señal
 Z_EPS=1e-12            # epsilon numérico en el cálculo del z-score
 
+# ==============================
+# MARKET REGIME (CONSOLIDATED)
+# ==============================
+
+REGIME_USE_FILTERS=true
+
+# Volatility regime
+REGIME_VOL_WINDOW_MIN=30
+REGIME_VOL_THRESHOLD_TYPE=percentile
+REGIME_VOL_THRESHOLD_VALUE=0.7
+REGIME_VOL_MODE=avoid_high_vol
+
+# Trend regime
+REGIME_TREND_WINDOW_MIN=60
+REGIME_TREND_METHOD=slope
+REGIME_TREND_THRESHOLD_TYPE=percentile
+REGIME_TREND_THRESHOLD_VALUE=0.7
+REGIME_TREND_MODE=avoid_high_trend
+
+# Shock regime
+REGIME_SHOCK_WINDOW_MIN=5
+REGIME_SHOCK_SIGMA_THRESHOLD=2.5
+REGIME_SHOCK_COOLDOWN_MIN=5
+
 # Filtros
 SESSION_START_TIME=15:35
 SESSION_END_TIME=21:45
