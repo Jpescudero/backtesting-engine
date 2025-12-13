@@ -26,10 +26,10 @@ instruments:
   SP500:
     cost_type: "points"
     commission_per_side: 0.275
-    spread: 0.3
-    slippage: 0.25
+    spread: 0.6
+    slippage: 0.1
     contract_multiplier: 10
-    venue: "generic"
+    venue: "Darwinex"
 
   EURAUD:
     cost_type: "points"
