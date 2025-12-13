@@ -67,7 +67,7 @@ def _parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--output-dir",
-        default=Path(__file__).resolve().parents[3] / "outputs" / "intraday_mean_reversion" / "study_1",
+        default=Path(__file__).resolve().parents[1] / "output" / "study_1",
         type=Path,
         help="Base output directory",
     )
