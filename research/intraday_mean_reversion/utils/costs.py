@@ -7,7 +7,7 @@ from typing import Any
 
 from src.costs import CostModel
 
-_DEFAULT_COSTS_PATH = Path("config/costs/costs.yaml")
+_DEFAULT_COSTS_PATH = Path(__file__).resolve().parents[3] / "config/costs/costs.yaml"
 
 
 def load_cost_model(params: dict[str, Any]) -> CostModel:

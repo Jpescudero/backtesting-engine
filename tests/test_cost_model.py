@@ -20,6 +20,13 @@ def test_from_yaml_reads_instrument(instrument: str) -> None:
     assert model.config.contract_multiplier == 1.0
 
 
+def test_from_yaml_resolves_repo_root(monkeypatch: pytest.MonkeyPatch) -> None:
+    repo_root = Path(__file__).resolve().parents[1]
+    monkeypatch.chdir(repo_root / "research")
+    model = CostModel.from_yaml("config/costs/costs.yaml", "NDX")
+    assert model.config.instrument == "NDX"
+
+
 def test_breakdown_points_long_vs_short_equivalence() -> None:
     model = CostModel.from_yaml(str(FIXTURE_PATH), "NDXm")
     long_cost = model.breakdown(100.0, 105.0, "long", qty=1.0)["total_cost"]

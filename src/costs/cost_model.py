@@ -50,7 +50,15 @@ class CostModel:
 
         config_path = Path(path)
         if not config_path.exists():
-            raise FileNotFoundError(f"Cost configuration file not found: {config_path}")
+            repo_root = Path(__file__).resolve().parents[2]
+            candidate = repo_root / path
+            if candidate.exists():
+                config_path = candidate
+            else:
+                raise FileNotFoundError(
+                    "Cost configuration file not found: "
+                    f"{config_path} (also tried {candidate})"
+                )
 
         payload = _load_yaml_file(config_path)
 
